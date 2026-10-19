@@ -1,0 +1,84 @@
+services:
+  app:
+    build:
+      args:
+        user: krash
+        uid: 1000
+      context: ./
+      dockerfile: Dockerfile
+    image: ziruma360
+    container_name: ziruma360-app
+    restart: unless-stopped
+    working_dir: /var/www/
+    ports:
+      - 6001:6001
+    volumes:
+      - ./:/var/www
+    networks:
+      - ziruma360
+
+  db:
+    image: postgres:latest
+    container_name: ziruma360-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: postgres
+    networks:
+      - ziruma360
+
+  nginx:
+    image: nginx:alpine
+    container_name: ziruma360-nginx
+    restart: unless-stopped
+    ports:
+      - 8000:80
+    volumes:
+      - ./:/var/www
+      - ./config-docker/nginx:/etc/nginx/conf.d/
+    networks:
+      - ziruma360
+
+  dbadmin:
+    container_name: ziruma360-dbadminer
+    hostname: dbadmin
+    image: adminer
+    ports:
+      - 8080:8080
+    depends_on:
+      - db
+    networks:
+      - ziruma360
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: ziruma360-redis
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    volumes:
+      - redis-data:/data
+    networks:
+      - ziruma360
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ziruma360-mailhog
+    restart: unless-stopped
+    ports:
+      - 1025:1025
+      - 8025:8025
+    networks:
+      - ziruma360
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  ziruma360:
+    driver: bridge
