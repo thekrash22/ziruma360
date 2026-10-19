@@ -100,8 +100,10 @@ class Role extends Model
     {
         return $this->belongsToMany(
             ResidentialComplexMembership::class,
-            'membership_roles'
-        )->withPivot('valid_from', 'valid_until')
+            'membership_roles',
+            'role_id'
+        )
+            ->withPivot('valid_from', 'valid_until')
             ->withTimestamps();
     }
 }

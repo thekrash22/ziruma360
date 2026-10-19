@@ -103,7 +103,7 @@ class ResidentialComplexMembership extends Model
 
     public function roles(): BelongsToMany
     {
-        return $this->belongsToMany(Role::class, 'membership_roles')
+        return $this->belongsToMany(Role::class, 'membership_roles', 'membership_id')
             ->withPivot('valid_from', 'valid_until')
             ->withTimestamps();
     }

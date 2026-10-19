@@ -34,7 +34,7 @@
 | ID | Spec | Route | Commit |
 |---|---|---|---|
 | T1 | S1-S2 | Commit dbab9b3 | Commit dbab9b3 |
-| T2 | S3-S4 | Implementar | — |
+| T2 | S3-S4 | Commit 303cfbf | Commit 303cfbf |
 | T3 | S5-S6 | Implementar | — |
 | T4 | S7-S9 | Implementar | — |
 | T5 | S10 | Implementar | — |
