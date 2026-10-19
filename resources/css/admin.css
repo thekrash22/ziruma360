@@ -1,0 +1,16 @@
+/* TailAdmin unified stylesheet for Ziruma360 */
+/* Tailwind v4 stack with TailAdmin theme tokens + custom components */
+
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+
+/* Enables the `dark:` variant against any `.dark` ancestor (matches TailAdmin) */
+@custom-variant dark (&:is(.dark *));
+
+/* Explicit source paths so Vue SFCs (which the default scanner may miss in some setups) are included */
+@source "../../resources/js/**/*.vue";
+@source "../../resources/js/**/*.ts";
+@source "../../resources/views/**/*.blade.php";
+
+/* Theme tokens, custom variants, base layer and component overrides from the TailAdmin template */
+@import "./tailwind-admin.css";

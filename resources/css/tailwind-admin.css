@@ -1,10 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap")
-layer(base);
-
-@import "tailwindcss";
-@plugin "@tailwindcss/forms";
-
-@custom-variant dark (&:is(.dark *));
+/* Theme tokens and TailAdmin component overrides
+ * Tailwind core, forms plugin and the dark variant are declared once in admin.css,
+ * which imports this file. The Outfit webfont ships via <link> in app.blade.php. */
 
 @theme {
   --font-*: initial;
