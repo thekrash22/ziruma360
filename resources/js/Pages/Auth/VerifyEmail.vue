@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import GuestLayout from '@/Layouts/GuestLayout.vue';
+import AuthLayout from '@/Layouts/AuthLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 
@@ -20,40 +20,46 @@ const verificationLinkSent = computed(
 </script>
 
 <template>
-    <GuestLayout>
+    <AuthLayout>
         <Head title="Email Verification" />
 
-        <div class="mb-4 text-sm text-gray-600">
-            Thanks for signing up! Before getting started, could you verify your
-            email address by clicking on the link we just emailed to you? If you
-            didn't receive the email, we will gladly send you another.
+        <div class="mb-6">
+            <h1 class="text-title-sm font-semibold text-gray-800 dark:text-white">
+                Verificá tu email
+            </h1>
         </div>
 
-        <div
-            class="mb-4 text-sm font-medium text-green-600"
-            v-if="verificationLinkSent"
-        >
-            A new verification link has been sent to the email address you
-            provided during registration.
-        </div>
+        <div class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
+            <p>
+                Antes de seguir, abrí el enlace que te enviamos por email para
+                verificar tu dirección. Si no lo recibiste, podemos reenviarlo.
+            </p>
 
-        <form @submit.prevent="submit">
-            <div class="mt-4 flex items-center justify-between">
-                <PrimaryButton
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Resend Verification Email
-                </PrimaryButton>
-
-                <Link
-                    :href="route('logout')"
-                    method="post"
-                    as="button"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                    >Log Out</Link
-                >
+            <div
+                class="mt-3 font-medium text-success-500"
+                v-if="verificationLinkSent"
+            >
+                Te enviamos un nuevo enlace de verificación.
             </div>
+        </div>
+
+        <form @submit.prevent="submit" class="mt-6 space-y-4">
+            <PrimaryButton
+                class="w-full"
+                :class="{ 'opacity-60': form.processing }"
+                :disabled="form.processing"
+            >
+                Reenviar email de verificación
+            </PrimaryButton>
+
+            <Link
+                :href="route('logout')"
+                method="post"
+                as="button"
+                class="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+                Cerrar sesión
+            </Link>
         </form>
-    </GuestLayout>
+    </AuthLayout>
 </template>
