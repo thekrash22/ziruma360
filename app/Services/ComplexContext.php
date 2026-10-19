@@ -13,12 +13,25 @@ class ComplexContext
 {
     private const SESSION_KEY = 'active_residential_complex_id';
 
+    // For testing purposes
+    private static ?int $testComplexId = null;
+
     /**
      * Get the current complex ID from session.
      */
     public static function getCurrentComplexId(): ?int
     {
-        return Session::get(self::SESSION_KEY);
+        // Allow test override
+        if (self::$testComplexId !== null) {
+            return self::$testComplexId;
+        }
+
+        // Check if session is available
+        if (app()->bound('session')) {
+            return Session::get(self::SESSION_KEY);
+        }
+
+        return null;
     }
 
     /**
@@ -26,10 +39,14 @@ class ComplexContext
      */
     public static function setCurrentComplexId(?int $complexId): void
     {
-        if ($complexId === null) {
-            Session::forget(self::SESSION_KEY);
-        } else {
-            Session::put(self::SESSION_KEY, $complexId);
+        self::$testComplexId = $complexId;
+
+        if (app()->bound('session')) {
+            if ($complexId === null) {
+                Session::forget(self::SESSION_KEY);
+            } else {
+                Session::put(self::SESSION_KEY, $complexId);
+            }
         }
     }
 
@@ -90,6 +107,10 @@ class ComplexContext
      */
     public static function clear(): void
     {
-        self::setCurrentComplexId(null);
+        self::$testComplexId = null;
+
+        if (app()->bound('session')) {
+            Session::forget(self::SESSION_KEY);
+        }
     }
 }
