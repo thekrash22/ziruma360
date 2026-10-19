@@ -46,3 +46,7 @@
 **L1.** Usuario: "vamos a iniciar un proyecto nuevo usando gentle-ai, en la carpeta /docs tengo un md que tiene de que va el proyecto, que en este caso es para un conjunto residencial, con un tema de rentas cortas."
 
 **L2.** Decisiones confirmadas: D-01 (visitantes unificados con people), D-06 (permisos en código), D-09 (carga masiva día uno).
+
+**L3.** Reglas de desarrollo: 1) Docker commands con `docker compose exec app`, 2) SOLID + DI con Services/Actions/DTOs, 3) Template TailAdmin de `templete-ui/` adaptado a Vue 3 + Inertia, 4) Ramas `feat/<nombre>` para cada feature, usuario hace PR.
+
+**L4.** Rama feat/ui-template completada (d0e111a): UI TailAdmin adaptada, 30 tests pasando.
