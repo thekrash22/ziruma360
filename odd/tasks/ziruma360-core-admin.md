@@ -37,7 +37,7 @@
 | T2 | S3-S4 | Commit 303cfbf | Commit 303cfbf |
 | T3 | S5-S6 | Implementar | — |
 | T4 | S7-S9 | Commit 0e41c0c | Commit 0e41c0c |
-| T5 | S10 | Implementar | — |
+| T5 | S10 | Commit 034e40e | Commit 034e40e |
 
 ---
 
