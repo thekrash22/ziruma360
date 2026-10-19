@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import AuthLayout from '@/Layouts/AuthLayout.vue';
 import Checkbox from '@/Components/Checkbox.vue';
-import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -28,14 +28,26 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
+    <AuthLayout>
         <Head title="Log in" />
 
-        <div v-if="status" class="mb-4 text-sm font-medium text-green-600">
+        <div class="mb-6">
+            <h1 class="text-title-sm font-semibold text-gray-800 dark:text-white">
+                Iniciar sesión
+            </h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Ingresá con tu cuenta de Ziruma360.
+            </p>
+        </div>
+
+        <div
+            v-if="status"
+            class="mb-4 rounded-lg bg-success-500/10 px-4 py-3 text-sm font-medium text-success-500"
+        >
             {{ status }}
         </div>
 
-        <form @submit.prevent="submit">
+        <form @submit.prevent="submit" class="space-y-5">
             <div>
                 <InputLabel for="email" value="Email" />
 
@@ -52,8 +64,8 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
+            <div>
+                <InputLabel for="password" value="Contraseña" />
 
                 <TextInput
                     id="password"
@@ -67,32 +79,40 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.password" />
             </div>
 
-            <div class="mt-4 block">
+            <div class="flex items-center justify-between">
                 <label class="flex items-center">
                     <Checkbox name="remember" v-model:checked="form.remember" />
-                    <span class="ms-2 text-sm text-gray-600"
-                        >Remember me</span
-                    >
+                    <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">
+                        Recordarme
+                    </span>
                 </label>
-            </div>
 
-            <div class="mt-4 flex items-center justify-end">
                 <Link
                     v-if="canResetPassword"
                     :href="route('password.request')"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    class="text-sm font-medium text-brand-500 hover:text-brand-600"
                 >
-                    Forgot your password?
+                    ¿Olvidaste tu contraseña?
                 </Link>
-
-                <PrimaryButton
-                    class="ms-4"
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Log in
-                </PrimaryButton>
             </div>
+
+            <PrimaryButton
+                class="w-full"
+                :class="{ 'opacity-60': form.processing }"
+                :disabled="form.processing"
+            >
+                Iniciar sesión
+            </PrimaryButton>
+
+            <p class="text-center text-sm text-gray-600 dark:text-gray-400">
+                ¿No tenés cuenta?
+                <Link
+                    :href="route('register')"
+                    class="font-medium text-brand-500 hover:text-brand-600"
+                >
+                    Registrarme
+                </Link>
+            </p>
         </form>
-    </GuestLayout>
+    </AuthLayout>
 </template>

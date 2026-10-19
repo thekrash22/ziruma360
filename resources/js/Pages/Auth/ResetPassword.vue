@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import GuestLayout from '@/Layouts/GuestLayout.vue';
+import AuthLayout from '@/Layouts/AuthLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 
 const props = defineProps<{
     email: string;
@@ -28,10 +28,19 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
+    <AuthLayout>
         <Head title="Reset Password" />
 
-        <form @submit.prevent="submit">
+        <div class="mb-6">
+            <h1 class="text-title-sm font-semibold text-gray-800 dark:text-white">
+                Restablecer contraseña
+            </h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Elegí una contraseña nueva para tu cuenta.
+            </p>
+        </div>
+
+        <form @submit.prevent="submit" class="space-y-5">
             <div>
                 <InputLabel for="email" value="Email" />
 
@@ -48,8 +57,8 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
+            <div>
+                <InputLabel for="password" value="Nueva contraseña" />
 
                 <TextInput
                     id="password"
@@ -63,10 +72,10 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.password" />
             </div>
 
-            <div class="mt-4">
+            <div>
                 <InputLabel
                     for="password_confirmation"
-                    value="Confirm Password"
+                    value="Confirmar contraseña"
                 />
 
                 <TextInput
@@ -84,14 +93,13 @@ const submit = () => {
                 />
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
-                <PrimaryButton
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Reset Password
-                </PrimaryButton>
-            </div>
+            <PrimaryButton
+                class="w-full"
+                :class="{ 'opacity-60': form.processing }"
+                :disabled="form.processing"
+            >
+                Restablecer contraseña
+            </PrimaryButton>
         </form>
-    </GuestLayout>
+    </AuthLayout>
 </template>

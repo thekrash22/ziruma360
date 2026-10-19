@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import GuestLayout from '@/Layouts/GuestLayout.vue';
+import AuthLayout from '@/Layouts/AuthLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -23,12 +23,21 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
+    <AuthLayout>
         <Head title="Register" />
 
-        <form @submit.prevent="submit">
+        <div class="mb-6">
+            <h1 class="text-title-sm font-semibold text-gray-800 dark:text-white">
+                Crear cuenta
+            </h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Empezá a administrar tu conjunto con Ziruma360.
+            </p>
+        </div>
+
+        <form @submit.prevent="submit" class="space-y-5">
             <div>
-                <InputLabel for="name" value="Name" />
+                <InputLabel for="name" value="Nombre" />
 
                 <TextInput
                     id="name"
@@ -43,7 +52,7 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.name" />
             </div>
 
-            <div class="mt-4">
+            <div>
                 <InputLabel for="email" value="Email" />
 
                 <TextInput
@@ -58,8 +67,8 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
+            <div>
+                <InputLabel for="password" value="Contraseña" />
 
                 <TextInput
                     id="password"
@@ -73,10 +82,10 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.password" />
             </div>
 
-            <div class="mt-4">
+            <div>
                 <InputLabel
                     for="password_confirmation"
-                    value="Confirm Password"
+                    value="Confirmar contraseña"
                 />
 
                 <TextInput
@@ -94,22 +103,23 @@ const submit = () => {
                 />
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
+            <PrimaryButton
+                class="w-full"
+                :class="{ 'opacity-60': form.processing }"
+                :disabled="form.processing"
+            >
+                Crear cuenta
+            </PrimaryButton>
+
+            <p class="text-center text-sm text-gray-600 dark:text-gray-400">
+                ¿Ya tenés cuenta?
                 <Link
                     :href="route('login')"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    class="font-medium text-brand-500 hover:text-brand-600"
                 >
-                    Already registered?
+                    Iniciar sesión
                 </Link>
-
-                <PrimaryButton
-                    class="ms-4"
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Register
-                </PrimaryButton>
-            </div>
+            </p>
         </form>
-    </GuestLayout>
+    </AuthLayout>
 </template>
