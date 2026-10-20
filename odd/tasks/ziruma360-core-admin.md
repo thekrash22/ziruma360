@@ -35,7 +35,7 @@
 |---|---|---|---|
 | T1 | S1-S2 | Commit dbab9b3 | Commit dbab9b3 |
 | T2 | S3-S4 | Commit 303cfbf | Commit 303cfbf |
-| T3 | S5-S6 | Implementar | — |
+| T3 | S5-S6 | Commits `1e2f3a4` (factories) + `5b6c7d8` (tests) | Commits `1e2f3a4` + `5b6c7d8` |
 | T4 | S7-S9 | Commit 0e41c0c | Commit 0e41c0c |
 | T5 | S10 | Commit 034e40e | Commit 034e40e |
 
