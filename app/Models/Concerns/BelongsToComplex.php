@@ -77,4 +77,13 @@ trait BelongsToComplex
         return $query->withoutGlobalScope('complex')
             ->where('residential_complex_id', $complexId);
     }
+
+    /**
+     * Alias for InComplex - query within a specific complex.
+     */
+    public function scopeForComplex(Builder $query, ResidentialComplex|int $complex): Builder
+    {
+        $complexId = $complex instanceof ResidentialComplex ? $complex->id : $complex;
+        return $this->scopeInComplex($query, $complexId);
+    }
 }
