@@ -41,6 +41,24 @@
 
 ---
 
+## Tasks Pendientes (según spec docs)
+
+| ID | Descripción | Depende | Prioridad |
+|---|---|---|---|
+| T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | Alta |
+| T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | Alta |
+| T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | Alta |
+| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
+| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
+| T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
+| T12 | `property_unit_ownerships` (titularidad con historial) | T8 | Alta |
+| T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta |
+| T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta |
+| T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media |
+| T16 | Tests Pest para nueva estructura física y relaciones | T7-T15 | Alta |
+
+---
+
 ## Log
 
 **L1.** Usuario: "vamos a iniciar un proyecto nuevo usando gentle-ai, en la carpeta /docs tengo un md que tiene de que va el proyecto, que en este caso es para un conjunto residencial, con un tema de rentas cortas."
