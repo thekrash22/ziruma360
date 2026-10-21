@@ -36,39 +36,55 @@ const menuGroups: MenuGroup[] = [
         icon: 'dashboard',
       },
       {
-        label: 'Conjunto',
+        label: 'Edificios',
+        route: 'buildings.index',
         icon: 'building',
-        children: [
-          { label: 'Edificios', route: 'buildings.index', icon: 'building' },
-          { label: 'Unidades', route: 'units.index', icon: 'door' },
-          { label: 'Áreas Comunes', route: 'common-areas.index', icon: 'grid' },
-        ],
+      },
+      {
+        label: 'Unidades',
+        route: 'units.index',
+        icon: 'door',
       },
       {
         label: 'Personas',
+        route: 'people.index',
         icon: 'people',
+      },
+    ],
+  },
+  {
+    title: 'Próximamente',
+    items: [
+      {
+        label: 'Áreas Comunes',
+        icon: 'grid',
         children: [
-          { label: 'Propietarios', route: 'owners.index', icon: 'user' },
-          { label: 'Residentes', route: 'residents.index', icon: 'home' },
-          { label: 'Empleados', route: 'employees.index', icon: 'briefcase' },
+          { label: 'Ver', route: '', icon: 'grid' },
+          { label: 'Crear', route: '', icon: 'grid' },
+        ],
+      },
+      {
+        label: 'Propietarios',
+        icon: 'user',
+        children: [
+          { label: 'Ver', route: '', icon: 'user' },
+          { label: 'Crear', route: '', icon: 'user' },
         ],
       },
       {
         label: 'Rentas Cortas',
         icon: 'calendar',
         children: [
-          { label: 'Estancias', route: 'stays.index', icon: 'calendar' },
-          { label: 'Visitantes', route: 'visitors.index', icon: 'users' },
-          { label: 'Vehículos', route: 'vehicles.index', icon: 'car' },
+          { label: 'Estancias', route: '', icon: 'calendar' },
+          { label: 'Visitantes', route: '', icon: 'users' },
         ],
       },
       {
         label: 'Configuración',
         icon: 'settings',
         children: [
-          { label: 'General', route: 'settings.general', icon: 'cog' },
-          { label: 'Roles y Permisos', route: 'roles.index', icon: 'shield' },
-          { label: 'Miembros', route: 'members.index', icon: 'users' },
+          { label: 'General', route: '', icon: 'cog' },
+          { label: 'Roles', route: '', icon: 'shield' },
         ],
       },
     ],

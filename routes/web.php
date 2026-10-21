@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Web\BuildingController;
 use App\Http\Controllers\Web\PersonaController;
 use App\Http\Controllers\Web\UnidadController;
 use Illuminate\Foundation\Application;
@@ -24,6 +25,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Buildings CRUD
+    Route::get('/buildings', [BuildingController::class, 'index'])->name('buildings.index');
+    Route::get('/buildings/create', [BuildingController::class, 'create'])->name('buildings.create');
+    Route::post('/buildings', [BuildingController::class, 'store'])->name('buildings.store');
+    Route::get('/buildings/{uuid}', [BuildingController::class, 'show'])->name('buildings.show');
+    Route::get('/buildings/{uuid}/edit', [BuildingController::class, 'edit'])->name('buildings.edit');
+    Route::put('/buildings/{uuid}', [BuildingController::class, 'update'])->name('buildings.update');
+    Route::delete('/buildings/{uuid}', [BuildingController::class, 'destroy'])->name('buildings.destroy');
+    Route::post('/buildings/{uuid}/floors/generate', [BuildingController::class, 'generateFloors'])->name('buildings.floors.generate');
 
     // Units CRUD
     Route::get('/units', [UnidadController::class, 'index'])->name('units.index');
