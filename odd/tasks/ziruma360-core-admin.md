@@ -39,6 +39,7 @@
 | T4 | S7-S9 | Commit 0e41c0c | Commit 0e41c0c |
 | T5 | S10 | Commit 034e40e | Commit 034e40e |
 | T6 | modules | Commit 9c896e7 | Commit 9c896e7 |
+| T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
 
 ---
 
@@ -47,7 +48,7 @@
 | ID | Descripción | Depende | Prioridad |
 |---|---|---|---|
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
-| T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | Alta |
+| T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
 | T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | Alta |
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
@@ -71,3 +72,5 @@
 **L4.** Rama feat/ui-template completada (d0e111a): UI TailAdmin adaptada, 30 tests pasando.
 
 **L5.** Tarea T6 completada: residential_complex_modules. Enum ComplexModule con 6 módulos, observer para seeding automático, 15 tests pasando (commit 9c896e7).
+
+**L6.** Tarea T7 completada: Estructura física. Building, BuildingFloor, ApartmentType con enums y BelongsToComplex. 20 tests pasando (commit 41c62ed).
