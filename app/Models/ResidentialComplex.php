@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ComplexModule;
 use App\Enums\ResidentialComplexStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -80,5 +81,57 @@ class ResidentialComplex extends Model
     public function roles(): HasMany
     {
         return $this->hasMany(Role::class);
+    }
+
+    public function modules(): HasMany
+    {
+        return $this->hasMany(ResidentialComplexModule::class);
+    }
+
+    /**
+     * Check if a specific module is enabled for this complex.
+     */
+    public function hasModule(ComplexModule|string $module): bool
+    {
+        $key = $module instanceof ComplexModule ? $module->value : $module;
+        return $this->modules()
+            ->byModule($key)
+            ->enabled()
+            ->exists();
+    }
+
+    /**
+     * Get an enabled module by key.
+     */
+    public function getModule(ComplexModule|string $module): ?ResidentialComplexModule
+    {
+        $key = $module instanceof ComplexModule ? $module->value : $module;
+        return $this->modules()
+            ->byModule($key)
+            ->first();
+    }
+
+    /**
+     * Enable a module with optional settings.
+     */
+    public function enableModule(ComplexModule $module, array $settings = []): ResidentialComplexModule
+    {
+        return $this->modules()->updateOrCreate(
+            ['module_key' => $module->value],
+            [
+                'enabled' => true,
+                'settings' => array_merge($module->defaultSettings(), $settings),
+            ]
+        );
+    }
+
+    /**
+     * Disable a module.
+     */
+    public function disableModule(ComplexModule $module): void
+    {
+        $this->modules()
+            ->byModule($module->value)
+            ->update(['enabled' => false]);
     }
 }
