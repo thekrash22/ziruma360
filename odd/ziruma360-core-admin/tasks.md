@@ -85,13 +85,17 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Diferidos con registro: la revocación de las autorizaciones dependientes (T15), la política de aprobación del arrendamiento (propuesta abierta del spec §4.5) y el vocabulario cerrado de `delegated_permissions` (el spec no lo define: se valida la forma, objeto JSON con valores booleanos)
 
 ## T14: employments (empleados: conjunto + unidad)
-- Status: in_progress
+- Status: done
 - Specs: S20, S21, S22, S23, S24
 - Dependencias: T12
 - Prioridad: Alta
 - Rama: feat/employments (desde `feat/leases`)
-- Alcance: `person_id`, `employer_property_unit_id` nullable, `employment_type` (`complex_staff`, `unit_domestic`, `contractor`), `position`, `schedule` (JSONB validado), `valid_from`, `valid_until`, `status`, `access_authorized`; FK compuestas `RESTRICT` a `people` y `property_units`, CHECK de vigencia, de dominios y de coherencia tipo↔empleador, RN-P11 en la base (acceso exige cuenta y membresía activa) y no duplicación de empleo activo equivalente
-- Diferidos con registro: RN-P12 (política del conjunto para el acceso recurrente del empleado doméstico: no existe la tabla de políticas) y el vocabulario de `schedule` (el spec solo pide "JSONB validado")
+- Commit: 1419752 (alcance) + 9da83c4 (tabla con la garantía de RN-P11) + c5d05cb (modelo, enums y factory) + 4768f4e (relaciones en `Person` y `PropertyUnit`) + 2d82600 (pruebas)
+- Alcance: `person_id`, `employer_property_unit_id` nullable, `employment_type` (`complex_staff`, `unit_domestic`, `contractor`), `position`, `schedule` (JSONB validado), `valid_from`, `valid_until`, `status`, `access_authorized`; FK compuestas `RESTRICT` a `people` y `property_units`, CHECK de vigencia, de dominios, de `schedule` y de coherencia tipo↔empleador, RN-P11 en la base (acceso exige cuenta y membresía activa) y no duplicación de empleo activo equivalente
+- Verificación: suite completa en PostgreSQL 18.3 real **239 pasan, 0 skip, 554 assertions** (217 previos + 22 nuevos); sonda por SQL crudo que confirma el alta válida y el rechazo en la base de RN-P11, de la coherencia tipo-empleador, del `schedule` no objeto y del empleo activo duplicado; catálogo de 2 triggers y 18 constraints; base de desarrollo migrada y `z360_test` sin residuos
+- Slice: 997 líneas en 10 archivos y 5 commits sobre `feat/leases`; entrega en PR propio con `size:exception` (dos unidades cohesivas superan el corte de ~400 líneas)
+- Revisión nativa: pendiente para este slice (el de T13 quedó aprobado en `review-6b5a7e65db13d8b9`)
+- Diferidos con registro: RN-P12 (política del conjunto para el acceso recurrente del empleado doméstico: no existe la tabla de políticas), el vocabulario de `schedule` (el spec solo pide "JSONB validado") y la asignación del rol dentro de la membresía, que se valida en la aplicación
 
 ## T15: property_unit_authorizations
 - Status: pending
