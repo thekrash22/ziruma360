@@ -105,10 +105,17 @@ return new class extends Migration
                     RETURN NEW;
                 END IF;
 
+                -- El estado del arrendamiento se lee con un bloqueo de
+                -- comparticion: si el arrendamiento se termina en otra
+                -- transaccion, esta escritura espera y recien entonces ve el
+                -- estado definitivo. Sin este bloqueo, una ocupacion insertada
+                -- en paralelo a la terminacion podria quedar vigente sobre un
+                -- arrendamiento ya terminado.
                 SELECT tenant_person_id, property_unit_id, status
                 INTO lease_tenant, lease_unit, lease_status
                 FROM unit_leases
-                WHERE id = NEW.lease_id;
+                WHERE id = NEW.lease_id
+                FOR SHARE;
 
                 IF lease_tenant IS NULL THEN
                     RAISE EXCEPTION 'RN-P09: el arrendamiento % no existe', NEW.lease_id
