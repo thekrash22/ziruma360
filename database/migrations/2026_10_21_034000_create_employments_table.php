@@ -77,6 +77,15 @@ return new class extends Migration
         DB::statement('CREATE INDEX employments_person_index ON employments (person_id)');
         DB::statement('CREATE INDEX employments_employer_index ON employments (employer_property_unit_id) WHERE employer_property_unit_id IS NOT NULL');
 
+        // Red de seguridad a nivel de almacenamiento: un solo empleo activo
+        // por persona, tipo y empleador. El indice no depende del nivel de
+        // aislamiento de la transaccion; el trigger da el mensaje legible.
+        DB::statement(<<<'SQL'
+            CREATE UNIQUE INDEX employments_single_active_unique
+            ON employments (person_id, employment_type, (COALESCE(employer_property_unit_id, 0)))
+            WHERE status = 'active'
+        SQL);
+
         // RN-P11: el acceso al sistema exige cuenta y membresía activa. Un
         // CHECK no puede consultar otras tablas, asi que la garantía vive en
         // un trigger.
@@ -133,6 +142,16 @@ return new class extends Migration
                     RETURN NEW;
                 END IF;
 
+                -- Serializa el control: dos altas concurrentes del mismo
+                -- empleo (misma persona, tipo y empleador) se ordenan con
+                -- este bloqueo de fila, de modo que la segunda ve el empleo
+                -- ya confirmado y es rechazada.
+                PERFORM 1
+                FROM people p
+                WHERE p.id = NEW.person_id
+                  AND p.residential_complex_id = NEW.residential_complex_id
+                FOR UPDATE;
+
                 IF EXISTS (
                     SELECT 1
                     FROM employments e
@@ -167,6 +186,7 @@ return new class extends Migration
         DB::statement('DROP FUNCTION IF EXISTS employments_single_active_check()');
         DB::statement('DROP TRIGGER IF EXISTS employments_access_authorization_trigger ON employments');
         DB::statement('DROP FUNCTION IF EXISTS employments_access_authorization_check()');
+        DB::statement('DROP INDEX IF EXISTS employments_single_active_unique');
         DB::statement('DROP INDEX IF EXISTS employments_employer_index');
         DB::statement('DROP INDEX IF EXISTS employments_person_index');
         DB::statement('DROP TABLE IF EXISTS employments');
