@@ -124,9 +124,12 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
                 $child = $this->thirdConnection();
                 $child->beginTransaction();
 
-                // Senal de "voy a insertar": el padre confirma despues, para
-                // que esta escritura compita de verdad con la primera.
-                fwrite($childSide, "ready\n");
+                // Senal de "voy a insertar" con el PID del backend: el padre
+                // espera a que la escritura este efectivamente bloqueada en
+                // vez de asumirlo por un tiempo fijo.
+                fwrite($childSide, json_encode([
+                    'pid' => (int) $child->query('SELECT pg_backend_pid()')->fetchColumn(),
+                ])."\n");
                 fflush($childSide);
 
                 $child->exec($this->ownershipInsertSql($rows, 50, $rows['people_secondary']));
@@ -146,8 +149,9 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
         fclose($childSide);
 
         // El hijo ya va a insertar: se espera su senal antes de confirmar.
-        fgets($parentSide);
-        usleep(200000);
+        $signal = json_decode((string) fgets($parentSide), true);
+        $this->assertIsArray($signal);
+        $this->assertTrue($this->waitForLockWait((int) $signal['pid']));
 
         // Escritor A confirma y libera el bloqueo de la unidad.
         $second->commit();
@@ -159,6 +163,31 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
 
         $this->assertStringContainsString('error:', $outcome);
         $this->assertStringContainsString('RN-P04', $outcome);
+    }
+
+    /**
+     * Espera a que el backend del hijo este efectivamente esperando el
+     * bloqueo de fila: sin esto la prueba podria pasar sin que hubiera
+     * habido contencion real.
+     */
+    private function waitForLockWait(int $pid): bool
+    {
+        $deadline = microtime(true) + 10;
+
+        while (microtime(true) < $deadline) {
+            $waiting = $this->secondConnection()->query(
+                'SELECT count(*) FROM pg_stat_activity WHERE pid = '.$pid
+                ." AND wait_event_type = 'Lock'"
+            )->fetchColumn();
+
+            if ((int) $waiting > 0) {
+                return true;
+            }
+
+            usleep(20000);
+        }
+
+        return false;
     }
 
     /**
@@ -366,10 +395,26 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
             return;
         }
 
-        foreach ($this->referenceRows as $row) {
-            $this->second->exec(
-                'DELETE FROM '.$row['table'].' WHERE id = '.(int) $row['id']
-            );
+        // Orden de dependencias explicito: primero las filas que dependen de
+        // otras (titularidades, personas, unidades) y al final el conjunto.
+        // No se rely en el borrado en cascada de las tablas legacy.
+        $order = [
+            'property_unit_ownerships',
+            'people',
+            'property_units',
+            'building_floors',
+            'buildings',
+            'residential_complexes',
+        ];
+
+        foreach ($order as $table) {
+            foreach ($this->referenceRows as $row) {
+                if ($row['table'] === $table) {
+                    $this->second->exec(
+                        'DELETE FROM '.$table.' WHERE id = '.(int) $row['id']
+                    );
+                }
+            }
         }
     }
 }
