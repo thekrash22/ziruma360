@@ -72,12 +72,17 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Deuda abierta: proceso controlado de desactivación de un conjunto con historial (la FK `RESTRICT` responde con error de base de datos, no con mensaje de negocio); eficacia del bloqueo de RN-P04 bajo `REPEATABLE READ`/`SERIALIZABLE`; `notes` mutable y fuera del spec; RN-P01 y SEG-P01 diferidas
 
 ## T13: unit_leases + unit_occupancies
-- Status: in_progress
+- Status: done
 - Specs: S17, S18, S19
 - Dependencias: T12
 - Prioridad: Alta
 - Rama: feat/leases
-- Nota: dominio puro (sin rutas web ni API), como T8 y T12. RN-P07 (un contacto principal vigente por unidad), RN-P08 (un propietario no es automáticamente residente), RN-P09 (crear un arrendamiento crea o vincula la ocupación `tenant_resident` del arrendatario), RN-P10 (terminar el arrendamiento cierra la ocupación y revoca las delegaciones asociadas). Diferidos con registro: la revocación de las autorizaciones dependientes (requiere `property_unit_authorizations`, T15), la política de aprobación del arrendamiento (propuesta abierta del spec §4.5) y el vocabulario cerrado de `delegated_permissions` (el spec no lo define: se valida la forma, objeto JSON con valores booleanos).
+- Commit: edfb76a (alcance) + 5e56acd (unit_leases y sus CHECK) + 6ed0d8e (unit_occupancies con los triggers RN-P07/RN-P09/RN-P10) + e8fefcd (relaciones en PropertyUnit y Person) + 8a847cf (pruebas de las dos tablas) + 984e19b (límite de slice) + 1c8c91b (cierre de la carrera con FOR SHARE y prueba de concurrencia)
+- Verificación: suite completa en PostgreSQL 18.3 real **217 pasan, 0 skip, 511 assertions** (186 previos + 31 nuevos); sonda por SQL crudo que confirma la creación automática de la ocupación `tenant_resident` y el cierre con revocación de delegaciones; catálogo de 5 triggers y 5 funciones; base de desarrollo migrada, alineada y sin residuos
+- Garantías: FK compuestas `RESTRICT` hacia `property_units`, `people` y `unit_leases` (ACE-C02), CHECK de vigencia y dominios, `UNIQUE` parcial del contacto principal vigente (RN-P07), `UNIQUE` parcial de la ocupación `tenant_resident` vigente por arrendamiento y de la ocupación vigente por persona y unidad, RN-P09 (el arrendamiento crea o vincula la ocupación del arrendatario; la ocupación con `lease_id` es de ese arrendatario y de esa unidad), RN-P10 (terminar el arrendamiento cierra la ocupación y revoca las delegaciones)
+- Concurrencia: el trigger que valida la ocupación lee el estado del arrendamiento con `FOR SHARE`; la prueba de concurrencia se verificó en rojo sin el bloqueo y en verde con él
+- Revisión nativa: no procede; el `assess` del slice `stg..feat/leases` (2.054 líneas, 16 archivos) devuelve `reviewDue: false` (`under_budget`)
+- Diferidos con registro: la revocación de las autorizaciones dependientes (T15), la política de aprobación del arrendamiento (propuesta abierta del spec §4.5) y el vocabulario cerrado de `delegated_permissions` (el spec no lo define: se valida la forma, objeto JSON con valores booleanos)
 
 ## T14: employments (empleados: conjunto + unidad)
 - Status: pending
