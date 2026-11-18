@@ -58,10 +58,12 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Dependencias: T7
 - Prioridad: Media
 
-## T12: property_unit_ownerships (titularidad con historial)
-- Status: pending
+## T12: people + property_unit_ownerships
+- Status: in_progress
+- Specs: S14, S15, S16
 - Dependencias: T8
-- Prioridad: Alta
+- Rama: feat/ownerships
+- Commit: —
 
 ## T13: unit_leases + unit_occupancies
 - Status: pending
@@ -82,3 +84,9 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Status: pending
 - Dependencias: T8-T15
 - Prioridad: Alta
+
+## T17: Retirar el modelo legacy y migrar sus rutas
+- Status: pending
+- Dependencias: T12
+- Prioridad: Alta
+- Nota: `unidades`, `personas` y `persona_unidad` siguen en uso por las rutas web `/units`, `/people` y la API `/api/v1/units`, `/api/v1/people`.

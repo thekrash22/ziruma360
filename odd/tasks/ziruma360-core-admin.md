@@ -33,6 +33,12 @@
 
 **S13.** Pruebas de `property_units` y `apartments`: unicidad con `building_id` nulo, FK compuesta piso↔edificio, apartamento solo sobre unidad tipo `apartment`, apartamento 1:1 y del mismo conjunto, aislamiento multi-tenant.
 
+**S14.** `people` (§4.2 del spec): identidad por conjunto con `residential_complex_id`, `uuid`, `user_id` nullable, `full_name`, `first_name`, `last_name`, `document_type`, `document_number`, `phone`, `email`, `birth_date`, `status` (`active`, `inactive`), `data_consent_at`, `data_consent_ref`. `UNIQUE` parcial por conjunto sobre `(document_type, document_number)` cuando ambos existen (RN-P02: antes de crear se busca por documento y se reutiliza).
+
+**S15.** `property_unit_ownerships` (§4.3 del spec): `property_unit_id`, `person_id`, `ownership_type` (`owner`, `co_owner`, `usufructuary`, `other`), `percentage` nullable con `CHECK` 0–100, `valid_from`, `valid_until`, `status`, `document_reference`. Garantías a nivel de base de datos: unidad y persona del mismo conjunto (FK compuesta, ACE-C02), RN-P04 (la suma de porcentajes de titularidades vigentes no supera 100 %), RN-P05 (la titularidad no se edita en sitio: se cierra el registro vigente y se crea uno nuevo) y una única titularidad vigente por `(property_unit_id, person_id, ownership_type)`.
+
+**S16.** Pruebas de `people` y `property_unit_ownerships`: unicidad parcial de documento por conjunto, aislamiento multi-tenant, FK compuesta de mismo conjunto, RN-P04, RN-P05 y unicidad de la titularidad vigente por unidad, persona y tipo.
+
 ---
 
 ## Tasks
@@ -47,6 +53,7 @@
 | T6 | modules | Commit 9c896e7 | Commit 9c896e7 |
 | T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
 | T8 | S11-S13 | Worker | Commits 6d66975 + 75f5085 |
+| T12 | S14-S16 | Worker (en curso, rama `feat/ownerships`) | — |
 
 ---
 
@@ -60,11 +67,12 @@
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
-| T12 | `property_unit_ownerships` (titularidad con historial) | T8 | Alta |
+| T12 | `property_unit_ownerships` (titularidad con historial) | T8 | En curso (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta |
 | T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media |
 | T16 | Tests Pest para nueva estructura física y relaciones | T7-T15 | Alta |
+| T17 | Retirar el modelo legacy (`unidades`, `personas`, `persona_unidad`) y migrar sus rutas web (`/units`, `/people`) y API (`/api/v1/units`, `/api/v1/people`) a `property_units` y `people` | T12 | Alta |
 
 ---
 
@@ -115,7 +123,17 @@ Pendientes que surgieron de T8 (no incluidos en el alcance de T8):
 - `ResidentialComplexApiTest::test_returns_404_for_nonexistent_building` falla solo en PostgreSQL: la columna `uuid` es de tipo nativo y una cadena no-uuid produce 500 en vez de 404. Es previo a T8 (viene de T1/T7) y queda para un arreglo de validación de uuid.
 - El `BuildingController::destroy` ya desactiva en vez de borrar, pero no distingue el motivo para el usuario; falta el proceso controlado de desactivación previsto en RN-S02.
 
+**L10.** Revisión nativa de T8 iniciada porque el switch de RDD está activo y el usuario no dejó este objetivo sin revisar. Lineage `review-36dffbcdcacc7817`, tier medio, lentes `review-risk` y `review-reliability`, target `sha256:2e4fc4ac38bda582288acf90be0f4c9eba6ec784c352cdf79b5be3e56eb522fc`. El paso de captura quedó **bloqueado por un defecto del proveedor**: el registro de la ruta de captura rechaza el `collectBinding` con `Provider collectBinding collides with a different registered route` y, en el slot individual, `capture-route-registration-rejected / selector-mismatch`. Se probaron cuatro formas soportadas (grupo serializado, grupo estructurado, slot individual, grupo con `reviewerRunAcknowledged`), todas con `mutation_performed: false`: no corrió ningún reviewer, no se consumió autoridad y el repositorio no cambió. El lineage queda abierto para inspección del mantenedor; T8 no dependía de esta revisión porque ya tiene verificación independiente (`gentle-ai-verify`) y las pruebas. El árbol se dejó deliberadamente en `b33c544`, el candidato congelado, para que un reintento no invalide el target.
+
+**L11.** Arranca T12 en la rama `feat/ownerships` (creada desde `b33c544`). Decisiones:
+- T12 incluye `people` (§4.2 del spec) además de `property_unit_ownerships` (§4.3): la titularidad necesita una persona y la tabla `people` no existía, así que se abre como parte del mismo work unit (specs S14-S16).
+- El modelo legacy (`unidades`, `personas`, `persona_unidad`) **no** se toca en T12: sus rutas web (`/units`, `/people`) y API (`/api/v1/units`, `/api/v1/people`) siguen activas y migrarlas es un slice propio (T17).
+- `document_type` reutiliza el enum existente `TipoDocumento` (CC, CE, TI, PASAPORTE, NIT, PEP, PPT) en lugar de duplicarlo; T17 debe resolver ese enum junto con el resto del legacy.
+- RN-P01 (menores de edad vinculados a un adulto responsable) y SEG-P01 (exposición de datos por rol) quedan diferidos: el spec no define un campo para el adulto responsable y la exposición por rol es del API, no del dominio.
+- Garantías a nivel de base de datos para T12: FK compuestas que impiden mezclar conjuntos (ACE-C02), `UNIQUE` parcial de documento por conjunto, un índice único parcial de titularidad vigente por (unidad, persona, tipo), CHECK de porcentaje 0–100, CHECK de vigencia, y triggers para RN-P04 (suma de titularidades vigentes ≤ 100 %) y RN-P05 (la titularidad no se edita en sitio: se cierra y se crea otra).
+
 ## Delivery
 
 - Rama de feature: `feat/physical-structure`. Límite de slice registrado: 4.179 líneas en 9 commits desde `origin/main` (módulos 522, estructura física 992, UI de edificios 1.389, T8 1.092 + correcciones). Cada work unit supera el corte de ~400 líneas, así que la entrega debe ir en PRs encadenados/apilados (un PR por work unit: T6-T7, UI de edificios, T8) en lugar de un PR único. La creación de los PRs es decisión del usuario.
+- T12 se desarrolla en la rama `feat/ownerships`, creada desde `b33c544` (fin de T8), para que su PR sea un slice propio sobre la base de `feat/physical-structure`.
 
