@@ -58,10 +58,18 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Dependencias: T7
 - Prioridad: Media
 
-## T12: property_unit_ownerships (titularidad con historial)
-- Status: pending
+## T12: people + property_unit_ownerships
+- Status: done
+- Specs: S14, S15, S16
 - Dependencias: T8
-- Prioridad: Alta
+- Rama: feat/ownerships
+- Commit: b0bcb09 (alcance) + bfb8446 (people) + 11a6ace (titularidades) + 7a5ef4d (corrección RN-P04 concurrente / RN-P05 inmutable) + 5ea5650 (corrección RN-P04 por solapamiento / RN-P05 campos de auditoría) + e0b66ae (cierre documental) + b05e535 (harness PostgreSQL) + f3c2544 (migraciones sin ramas SQLite) + 25acd7b (404 ante UUID inválido) + f79586c (RN-P04 como máximo instantáneo, CHECK de dominio, tests de concurrencia y bloqueo de UPDATE) + 2584134 (cierre de los hallazgos de la revisión nativa)
+- Verificación: suite completa en PostgreSQL 18.3 real **186 pasan, 0 skip, 442 assertions** sobre la base de pruebas dedicada `z360_test`; verificación independiente `gentle-ai-verify` (S14/S15/S16 PASS con salvedad) con ocho hallazgos F1-F8, corregidos los aplicables; base de desarrollo migrada, alineada y sin datos de prueba
+- Decisión PostgreSQL-only: el proyecto es exclusivamente PostgreSQL (decisión del usuario); se retiraron las ramas SQLite de las cuatro migraciones nuevas y la suite dejó de correr sobre SQLite en memoria
+- Revisión nativa: lineage `review-e0a0385f4eac0b57` y sucesor `review-f4a03f11445fdda4` (dos rondas de hallazgos CRITICAL corregidas y verificadas; slot de corrección inejecutable por defecto del proveedor). Línea fresca `review-facb23b1bdc35ac5` sobre el slice de T12 (21 archivos, 2.324 líneas, tier alto): el lente de riesgo se admitió y el de fiabilidad fue rechazado cinco veces en admisión por defectos de forma del resultado del reviewer (sin mutar el repositorio) hasta ser admitido; cerró en `correction_required` con un CRITICAL (`R3-SQLITE-MIGRATION-REGRESSION`) que **contradice la decisión PostgreSQL-only del usuario y no se corrige**, y un no bloqueante (`R3-CONCURRENCY-OUTCOME-UNTESTED`) corregido en `2584134`, junto con `R3-RN-P05-CREATED-AT` (ahora `created_at` es inmutable), `R3-TEST-DB-RACE` y `R3-FACTORY-MAKE-PERSISTS-DEPENDENCIES`
+- Segunda revisión nativa (slice de correcciones): lineage `review-a7b83fb7c72aff95`, escaló a stop terminal (`native_stop_required`) por `R3-CLEANUP-DELETE-ORDER` (causalidad desconocida) y el no bloqueante `R3-CONCURRENCY-BLOCK-NOT-PROVED`; ambos corregidos en `884cec2` (limpieza en orden de dependencias explícito y espera determinista de la contención real por `pg_stat_activity`)
+- Tercera revisión nativa: lineage `review-1f0c20b03bb865ab` (candidato `8839e4c..HEAD`) **APROBADA** con la autoridad quemada y sin hallazgos bloqueantes; el primer intento de captura falló por una caída de red del proveedor sin mutar el repositorio y el slot reofrecido se relanzó con éxito
+- Deuda abierta: proceso controlado de desactivación de un conjunto con historial (la FK `RESTRICT` responde con error de base de datos, no con mensaje de negocio); eficacia del bloqueo de RN-P04 bajo `REPEATABLE READ`/`SERIALIZABLE`; `notes` mutable y fuera del spec; RN-P01 y SEG-P01 diferidas
 
 ## T13: unit_leases + unit_occupancies
 - Status: pending
@@ -82,3 +90,9 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Status: pending
 - Dependencias: T8-T15
 - Prioridad: Alta
+
+## T17: Retirar el modelo legacy y migrar sus rutas
+- Status: pending
+- Dependencias: T12
+- Prioridad: Alta
+- Nota: `unidades`, `personas` y `persona_unidad` siguen en uso por las rutas web `/units`, `/people` y la API `/api/v1/units`, `/api/v1/people`.

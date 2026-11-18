@@ -55,6 +55,22 @@ class ResidentialComplex extends Model
     }
 
     /**
+     * Un identificador de ruta que no es un UUID no puede existir: se
+     * responde 404 en vez de dejar que PostgreSQL rechace la consulta con un
+     * error de tipo (500).
+     */
+    public function resolveRouteBindingQuery($query, $value, $field = null)
+    {
+        $field ??= $this->getRouteKeyName();
+
+        if ($field === 'uuid' && ! Str::isUuid((string) $value)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return parent::resolveRouteBindingQuery($query, $value, $field);
+    }
+
+    /**
      * Check if the code can be changed.
      */
     public function canChangeCode(): bool

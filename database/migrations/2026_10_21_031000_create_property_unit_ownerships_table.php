@@ -1,0 +1,250 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * property_unit_ownerships (spec §4.3 / S15).
+ *
+ * Historial de titularidad sobre una unidad. Garantías a nivel de motor:
+ *   - FK compuesta (residential_complex_id, property_unit_id) -> property_units
+ *     y FK compuesta (residential_complex_id, person_id) -> people, ambas con
+ *     ON DELETE RESTRICT: es imposible mezclar conjuntos (ACE-C02) y una
+ *     unidad o persona con historial de titularidad no se borra, se desactiva
+ *     (RN-S04).
+ *   - CHECK percentage 0-100 y CHECK de vigencia (valid_until >= valid_from).
+ *   - UNIQUE parcial (property_unit_id, person_id, ownership_type) WHERE
+ *     status = 'active': una única titularidad vigente por unidad, persona y tipo.
+ *   - RN-P04: la suma de los porcentajes de las titularidades vigentes de la
+ *     misma unidad no puede superar 100.
+ *   - RN-P05: la titularidad no se edita en sitio; se cierra el registro
+ *     vigente y se crea uno nuevo.
+ */
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        DB::statement(<<<'SQL'
+            CREATE TABLE property_unit_ownerships (
+                id bigserial PRIMARY KEY,
+                uuid uuid NOT NULL,
+                residential_complex_id bigint NOT NULL REFERENCES residential_complexes(id) ON DELETE CASCADE,
+                property_unit_id bigint NOT NULL,
+                person_id bigint NOT NULL,
+                ownership_type varchar(255) NOT NULL,
+                percentage numeric(5, 2) NULL,
+                valid_from date NOT NULL,
+                valid_until date NULL,
+                status varchar(255) NOT NULL DEFAULT 'active',
+                document_reference varchar(255) NULL,
+                notes text NULL,
+                created_at timestamp(0) without time zone NULL,
+                updated_at timestamp(0) without time zone NULL,
+                CONSTRAINT property_unit_ownerships_uuid_unique UNIQUE (uuid),
+                CONSTRAINT property_unit_ownerships_percentage_check
+                    CHECK (percentage IS NULL OR (percentage >= 0 AND percentage <= 100)),
+                CONSTRAINT property_unit_ownerships_validity_check
+                    CHECK (valid_until IS NULL OR valid_until >= valid_from),
+                CONSTRAINT property_unit_ownerships_ownership_type_check
+                    CHECK (ownership_type IN ('owner', 'co_owner', 'usufructuary', 'other')),
+                CONSTRAINT property_unit_ownerships_status_check
+                    CHECK (status IN ('active', 'closed', 'cancelled')),
+                CONSTRAINT property_unit_ownerships_property_unit_complex_fk
+                    FOREIGN KEY (residential_complex_id, property_unit_id)
+                    REFERENCES property_units (residential_complex_id, id)
+                    ON DELETE RESTRICT,
+                CONSTRAINT property_unit_ownerships_person_complex_fk
+                    FOREIGN KEY (residential_complex_id, person_id)
+                    REFERENCES people (residential_complex_id, id)
+                    ON DELETE RESTRICT
+            )
+        SQL);
+
+        // Una única titularidad vigente por unidad, persona y tipo.
+        DB::statement(<<<'SQL'
+            CREATE UNIQUE INDEX property_unit_ownerships_active_unique
+            ON property_unit_ownerships (property_unit_id, person_id, ownership_type)
+            WHERE status = 'active'
+        SQL);
+
+        // RN-P04 (INSERT): el maximo instantaneo de la suma de los porcentajes
+        // de las titularidades vigentes (status active) de la misma unidad
+        // cuyo periodo se superpone al de la nueva, mas el porcentaje nuevo,
+        // no puede superar 100.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p04_insert() RETURNS trigger
+            LANGUAGE plpgsql AS $$
+            DECLARE
+                peak numeric(12, 2);
+            BEGIN
+                IF NEW.percentage IS NULL OR NEW.status <> 'active' THEN
+                    RETURN NEW;
+                END IF;
+
+                -- Serializa las inserciones concurrentes sobre la misma
+                -- unidad: sin este bloqueo dos transacciones pueden leer el
+                -- mismo total previo y commitear una suma mayor a 100.
+                PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
+
+                -- La suma se evalua en cada instante en que arranca o termina
+                -- un periodo (los unicos puntos donde la suma puede cambiar):
+                -- asi el control no depende del orden en que se registren las
+                -- titularidades ni del orden de sus periodos, y no rechaza
+                -- una succession legitima de cotitulares cuyos periodos no
+                -- se superponen entre si.
+                WITH spans AS (
+                    SELECT valid_from AS lo,
+                           COALESCE(valid_until, 'infinity'::date) AS hi,
+                           COALESCE(percentage, 0) AS pct
+                    FROM property_unit_ownerships
+                    WHERE property_unit_id = NEW.property_unit_id
+                      AND status = 'active'
+                      AND valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
+                      AND COALESCE(valid_until, 'infinity'::date) >= NEW.valid_from
+                    UNION ALL
+                    SELECT NEW.valid_from,
+                           COALESCE(NEW.valid_until, 'infinity'::date),
+                           COALESCE(NEW.percentage, 0)
+                ),
+                points AS (
+                    SELECT lo AS p FROM spans
+                    UNION
+                    SELECT hi FROM spans WHERE hi <> 'infinity'::date
+                )
+                SELECT COALESCE(MAX(total), 0) INTO peak
+                FROM (
+                    SELECT SUM(s.pct) AS total
+                    FROM spans s
+                    JOIN points pt ON pt.p >= s.lo AND pt.p <= s.hi
+                    GROUP BY pt.p
+                ) totals;
+
+                IF peak > 100 THEN
+                    RAISE EXCEPTION 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad % supera 100 por ciento', NEW.property_unit_id
+                        USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER property_unit_ownerships_rn_p04_insert_trigger
+            BEFORE INSERT ON property_unit_ownerships
+            FOR EACH ROW EXECUTE FUNCTION property_unit_ownerships_rn_p04_insert()
+        SQL);
+
+        // RN-P04 (UPDATE): misma comprobación, excluyendo la fila actualizada.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p04_update() RETURNS trigger
+            LANGUAGE plpgsql AS $$
+            DECLARE
+                peak numeric(12, 2);
+            BEGIN
+                IF NEW.percentage IS NULL OR NEW.status <> 'active' THEN
+                    RETURN NEW;
+                END IF;
+
+                -- Mismo bloqueo que en el INSERT: serializa el calculo de la
+                -- suma con las inserciones concurrentes de la misma unidad.
+                PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
+
+                WITH spans AS (
+                    SELECT valid_from AS lo,
+                           COALESCE(valid_until, 'infinity'::date) AS hi,
+                           COALESCE(percentage, 0) AS pct
+                    FROM property_unit_ownerships
+                    WHERE property_unit_id = NEW.property_unit_id
+                      AND id <> OLD.id
+                      AND status = 'active'
+                      AND valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
+                      AND COALESCE(valid_until, 'infinity'::date) >= NEW.valid_from
+                    UNION ALL
+                    SELECT NEW.valid_from,
+                           COALESCE(NEW.valid_until, 'infinity'::date),
+                           COALESCE(NEW.percentage, 0)
+                ),
+                points AS (
+                    SELECT lo AS p FROM spans
+                    UNION
+                    SELECT hi FROM spans WHERE hi <> 'infinity'::date
+                )
+                SELECT COALESCE(MAX(total), 0) INTO peak
+                FROM (
+                    SELECT SUM(s.pct) AS total
+                    FROM spans s
+                    JOIN points pt ON pt.p >= s.lo AND pt.p <= s.hi
+                    GROUP BY pt.p
+                ) totals;
+
+                IF peak > 100 THEN
+                    RAISE EXCEPTION 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad % supera 100 por ciento', NEW.property_unit_id
+                        USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER property_unit_ownerships_rn_p04_update_trigger
+            BEFORE UPDATE ON property_unit_ownerships
+            FOR EACH ROW EXECUTE FUNCTION property_unit_ownerships_rn_p04_update()
+        SQL);
+
+        // RN-P05: la titularidad no se edita en sitio. Los campos que
+        // describen el hecho (unidad, persona, tipo, porcentaje y valid_from)
+        // son inmutables en cualquier actualización, incluso al cerrar o
+        // reactivar el registro: para cambiar el titular hay que cerrar el
+        // vigente y crear uno nuevo. Solo cambian status, valid_until y las
+        // anotaciones.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p05_update() RETURNS trigger
+            LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.residential_complex_id IS DISTINCT FROM OLD.residential_complex_id
+                   OR NEW.uuid IS DISTINCT FROM OLD.uuid
+                   OR NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
+                   OR NEW.person_id IS DISTINCT FROM OLD.person_id
+                   OR NEW.ownership_type IS DISTINCT FROM OLD.ownership_type
+                   OR NEW.percentage IS DISTINCT FROM OLD.percentage
+                   OR NEW.valid_from IS DISTINCT FROM OLD.valid_from
+                   OR NEW.document_reference IS DISTINCT FROM OLD.document_reference
+                   OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+                    RAISE EXCEPTION 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo'
+                        USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER property_unit_ownerships_rn_p05_update_trigger
+            BEFORE UPDATE ON property_unit_ownerships
+            FOR EACH ROW EXECUTE FUNCTION property_unit_ownerships_rn_p05_update()
+        SQL);
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_insert_trigger ON property_unit_ownerships');
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_update_trigger ON property_unit_ownerships');
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p05_update_trigger ON property_unit_ownerships');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p04_insert()');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p04_update()');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p05_update()');
+
+        DB::statement('DROP TABLE IF EXISTS property_unit_ownerships');
+    }
+
+};

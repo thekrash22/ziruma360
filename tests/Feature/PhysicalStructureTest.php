@@ -9,6 +9,7 @@ use App\Models\ApartmentType;
 use App\Models\Building;
 use App\Models\BuildingFloor;
 use App\Models\ResidentialComplex;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -67,9 +68,15 @@ class PhysicalStructureTest extends TestCase
 
     public function test_building_has_elevators_constraint(): void
     {
-        // Note: This constraint is only enforced in PostgreSQL
-        // In SQLite tests, we rely on model validation instead
-        $this->markTestSkipped('CHECK constraint is PostgreSQL-only; use model validation in production');
+        // El CHECK vive en la base (PostgreSQL): un edificio con ascensor
+        // declarado pero sin cantidad de ascensores no es valido.
+        $this->expectException(QueryException::class);
+
+        Building::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'has_elevators' => true,
+            'elevator_count' => 0,
+        ]);
     }
 
     public function test_building_can_have_elevators(): void
