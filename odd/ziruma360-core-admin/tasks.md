@@ -85,9 +85,13 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Diferidos con registro: la revocación de las autorizaciones dependientes (T15), la política de aprobación del arrendamiento (propuesta abierta del spec §4.5) y el vocabulario cerrado de `delegated_permissions` (el spec no lo define: se valida la forma, objeto JSON con valores booleanos)
 
 ## T14: employments (empleados: conjunto + unidad)
-- Status: pending
+- Status: in_progress
+- Specs: S20, S21, S22, S23, S24
 - Dependencias: T12
 - Prioridad: Alta
+- Rama: feat/employments (desde `feat/leases`)
+- Alcance: `person_id`, `employer_property_unit_id` nullable, `employment_type` (`complex_staff`, `unit_domestic`, `contractor`), `position`, `schedule` (JSONB validado), `valid_from`, `valid_until`, `status`, `access_authorized`; FK compuestas `RESTRICT` a `people` y `property_units`, CHECK de vigencia, de dominios y de coherencia tipo↔empleador, RN-P11 en la base (acceso exige cuenta y membresía activa) y no duplicación de empleo activo equivalente
+- Diferidos con registro: RN-P12 (política del conjunto para el acceso recurrente del empleado doméstico: no existe la tabla de políticas) y el vocabulario de `schedule` (el spec solo pide "JSONB validado")
 
 ## T15: property_unit_authorizations
 - Status: pending
