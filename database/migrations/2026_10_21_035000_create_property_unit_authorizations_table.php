@@ -93,11 +93,20 @@ return new class extends Migration
         // concede permisos aunque su estado siga siendo `active`.
         DB::statement(<<<'SQL'
             CREATE VIEW effective_property_unit_authorizations AS
-            SELECT *
-            FROM property_unit_authorizations
-            WHERE status = 'active'
-              AND valid_from <= now()
-              AND (valid_until IS NULL OR valid_until >= now())
+            SELECT a.*
+            FROM property_unit_authorizations AS a
+            LEFT JOIN unit_leases AS l ON l.id = a.lease_id
+            WHERE a.status = 'active'
+              AND a.valid_from <= now()
+              AND (a.valid_until IS NULL OR a.valid_until >= now())
+              AND (
+                  a.lease_id IS NULL
+                  OR (
+                      l.status = 'active'
+                      AND l.starts_on <= CURRENT_DATE
+                      AND (l.ends_on IS NULL OR l.ends_on >= CURRENT_DATE)
+                  )
+              )
         SQL);
 
         // El scope es la lista de permisos concedidos: tiene que ser una
@@ -190,6 +199,50 @@ return new class extends Migration
             FOR EACH ROW EXECUTE FUNCTION property_unit_authorizations_user_check()
         SQL);
 
+        // Una autorizacion que depende de un arrendamiento solo puede existir
+        // mientras ese arrendamiento esta vigente: sin esta guarda se podrian
+        // delegar permisos sobre un arrendamiento ya terminado (el trigger de
+        // revocacion de unit_leases solo actua al cambiar su estado).
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION property_unit_authorizations_lease_guard() RETURNS trigger
+            LANGUAGE plpgsql AS $$
+            DECLARE
+                lease_status varchar(255);
+                lease_starts_on date;
+                lease_ends_on date;
+            BEGIN
+                IF NEW.lease_id IS NULL THEN
+                    RETURN NEW;
+                END IF;
+
+                -- Una revocacion (RN-P10) no puede bloquearse con esta guarda.
+                IF NEW.status = 'revoked' THEN
+                    RETURN NEW;
+                END IF;
+
+                SELECT status, starts_on, ends_on
+                INTO lease_status, lease_starts_on, lease_ends_on
+                FROM unit_leases
+                WHERE id = NEW.lease_id;
+
+                IF lease_status IS DISTINCT FROM 'active'
+                    OR lease_starts_on > CURRENT_DATE
+                    OR (lease_ends_on IS NOT NULL AND lease_ends_on < CURRENT_DATE) THEN
+                    RAISE EXCEPTION 'property_unit_authorizations: el arrendamiento de la autorizacion no esta vigente'
+                        USING ERRCODE = 'check_violation';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$;
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER property_unit_authorizations_lease_trigger
+            BEFORE INSERT OR UPDATE ON property_unit_authorizations
+            FOR EACH ROW EXECUTE FUNCTION property_unit_authorizations_lease_guard()
+        SQL);
+
         // RN-P10 (parte diferida desde T13): al terminar un arrendamiento se
         // revocan de forma controlada las autorizaciones que dependen de el.
         // La revocacion conserva la fila y su historial.
@@ -225,6 +278,8 @@ return new class extends Migration
     {
         DB::statement('DROP TRIGGER IF EXISTS unit_leases_revoke_dependent_authorizations_trigger ON unit_leases');
         DB::statement('DROP FUNCTION IF EXISTS unit_leases_revoke_dependent_authorizations()');
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_authorizations_lease_trigger ON property_unit_authorizations');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_authorizations_lease_guard()');
         DB::statement('DROP TRIGGER IF EXISTS property_unit_authorizations_user_trigger ON property_unit_authorizations');
         DB::statement('DROP FUNCTION IF EXISTS property_unit_authorizations_user_check()');
         DB::statement('DROP TRIGGER IF EXISTS property_unit_authorizations_revocation_trigger ON property_unit_authorizations');

@@ -398,6 +398,184 @@ class PropertyUnitAuthorizationsTest extends TestCase
         ]);
     }
 
+    // ==================== RN-P10: el arrendamiento de la autorizacion tiene que estar vigente ====================
+
+    public function test_rejects_an_authorization_over_an_ended_lease(): void
+    {
+        $unit = $this->unit();
+        $tenant = $this->person();
+
+        $lease = UnitLease::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'tenant_person_id' => $tenant->id,
+            'status' => LeaseStatus::ENDED,
+        ]);
+
+        try {
+            // La transaccion anidada usa un savepoint: el error de la base no
+            // aborta la transaccion de la prueba.
+            DB::transaction(function () use ($unit, $tenant, $lease) {
+                $this->authorization([
+                    'property_unit_id' => $unit->id,
+                    'person_id' => $tenant->id,
+                    'lease_id' => $lease->id,
+                    'valid_from' => now()->subDay()->toDateString(),
+                ]);
+            });
+
+            $this->fail('Una autorizacion sobre un arrendamiento terminado deberia rechazarse.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('arrendamiento', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('property_unit_authorizations', 0);
+    }
+
+    public function test_rejects_an_authorization_over_a_lease_that_already_expired(): void
+    {
+        $unit = $this->unit();
+        $tenant = $this->person();
+
+        $lease = UnitLease::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'tenant_person_id' => $tenant->id,
+            'starts_on' => now()->subMonths(2)->toDateString(),
+            'ends_on' => now()->subDay()->toDateString(),
+        ]);
+
+        try {
+            DB::transaction(function () use ($unit, $tenant, $lease) {
+                $this->authorization([
+                    'property_unit_id' => $unit->id,
+                    'person_id' => $tenant->id,
+                    'lease_id' => $lease->id,
+                    'valid_from' => now()->subDay()->toDateString(),
+                ]);
+            });
+
+            $this->fail('Una autorizacion sobre un arrendamiento ya vencido deberia rechazarse.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('arrendamiento', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('property_unit_authorizations', 0);
+    }
+
+    public function test_an_authorization_stops_granting_permissions_when_its_lease_expires(): void
+    {
+        $unit = $this->unit();
+        $tenant = $this->person();
+
+        $lease = UnitLease::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'tenant_person_id' => $tenant->id,
+            'starts_on' => now()->subMonth()->toDateString(),
+            'ends_on' => now()->addDay()->toDateString(),
+        ]);
+
+        $dependent = $this->authorization([
+            'property_unit_id' => $unit->id,
+            'person_id' => $tenant->id,
+            'lease_id' => $lease->id,
+            'valid_from' => now()->subDay()->toDateString(),
+        ]);
+
+        $this->assertTrue($dependent->isEffectiveAt());
+        $this->assertSame(1, PropertyUnitAuthorization::effective()->count());
+
+        // El arrendamiento vence por fecha sin que nadie cierre su estado:
+        // la autorizacion deja de conceder permisos aunque siga `active`.
+        $lease->update(['ends_on' => now()->subDay()->toDateString()]);
+
+        $dependent->refresh();
+
+        $this->assertSame(AuthorizationStatus::ACTIVE, $dependent->status);
+        $this->assertFalse($dependent->isEffectiveAt());
+        $this->assertSame(0, PropertyUnitAuthorization::effective()->count());
+        $this->assertSame(0, DB::table('effective_property_unit_authorizations')->count());
+    }
+
+    public function test_an_authorization_stays_effective_during_the_last_day_of_its_lease(): void
+    {
+        $unit = $this->unit();
+        $tenant = $this->person();
+
+        $lease = UnitLease::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'tenant_person_id' => $tenant->id,
+            'starts_on' => now()->subMonth()->toDateString(),
+            'ends_on' => now()->toDateString(),
+        ]);
+
+        $dependent = $this->authorization([
+            'property_unit_id' => $unit->id,
+            'person_id' => $tenant->id,
+            'lease_id' => $lease->id,
+            'valid_from' => now()->subDay()->toDateString(),
+        ]);
+
+        // El ultimo dia del arrendamiento sigue siendo un dia vigente: la
+        // vista, el ambito `effective` y `isEffectiveAt` tienen que coincidir.
+        $this->assertTrue($dependent->isEffectiveAt());
+        $this->assertSame(1, PropertyUnitAuthorization::effective()->count());
+        $this->assertSame(1, DB::table('effective_property_unit_authorizations')->count());
+    }
+
+    public function test_the_effectiveness_check_sees_a_revocation_done_after_loading(): void
+    {
+        $authorization = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => now()->subDay()->toDateString(),
+        ]);
+
+        $this->assertTrue($authorization->isEffectiveAt());
+
+        // La revocacion ocurre en otra transaccion: la instancia en memoria
+        // sigue diciendo `active`.
+        DB::table('property_unit_authorizations')
+            ->where('id', $authorization->id)
+            ->update(['status' => 'revoked', 'revoked_at' => now()]);
+
+        $this->assertFalse($authorization->isEffectiveAt());
+    }
+
+    public function test_the_effectiveness_check_sees_a_lease_that_stopped_being_current(): void
+    {
+        $unit = $this->unit();
+        $tenant = $this->person();
+
+        $lease = UnitLease::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'tenant_person_id' => $tenant->id,
+            'starts_on' => now()->subMonth()->toDateString(),
+            'ends_on' => now()->addDay()->toDateString(),
+        ]);
+
+        $authorization = $this->authorization([
+            'property_unit_id' => $unit->id,
+            'person_id' => $tenant->id,
+            'lease_id' => $lease->id,
+            'valid_from' => now()->subDay()->toDateString(),
+        ]);
+
+        // La relacion queda cacheada en la instancia.
+        $authorization->load('lease');
+
+        $this->assertTrue($authorization->isEffectiveAt());
+
+        // El arrendamiento vence por fecha: la instance cacheada ya no vale.
+        DB::table('unit_leases')
+            ->where('id', $lease->id)
+            ->update(['ends_on' => now()->subDay()->toDateString()]);
+
+        $this->assertFalse($authorization->isEffectiveAt());
+    }
+
     // ==================== Coherencia de la cuenta ====================
 
     public function test_rejects_an_account_that_does_not_belong_to_the_authorized_person(): void

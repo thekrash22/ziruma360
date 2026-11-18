@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AuthorizationStatus;
 use App\Enums\AuthorizationType;
+use App\Enums\LeaseStatus;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -84,38 +85,88 @@ class PropertyUnitAuthorization extends Model
      *
      * Es el equivalente en la aplicación de la vista
      * `effective_property_unit_authorizations`: ninguna autorización futura
-     * o vencida concede permisos.
+     * o vencida concede permisos, ni una cuyo arrendamiento dejó de estar
+     * vigente.
      *
      * @param  Builder<PropertyUnitAuthorization>  $query
      */
     public function scopeEffective(Builder $query, ?Carbon $at = null): Builder
     {
         $moment = $at ?? Carbon::now();
+        $day = $moment->toDateString();
 
         return $query->where('status', AuthorizationStatus::ACTIVE->value)
             ->where('valid_from', '<=', $moment)
             ->where(function (Builder $query) use ($moment) {
                 $query->whereNull('valid_until')
                     ->orWhere('valid_until', '>=', $moment);
+            })
+            ->where(function (Builder $query) use ($day) {
+                $query->whereNull('lease_id')
+                    ->orWhereHas('lease', fn (Builder $lease) => $lease->where('status', LeaseStatus::ACTIVE->value)
+                        ->whereDate('starts_on', '<=', $day)
+                        ->where(fn (Builder $lease) => $lease->whereNull('ends_on')
+                            ->orWhereDate('ends_on', '>=', $day)));
             });
     }
 
     /**
      * La autorización concede permisos en el momento dado (RN-P15).
+     *
+     * La decisión se toma sobre el estado actual de la base: una fila
+     * revocada o un arrendamiento que dejó de estar vigente tienen que
+     * impedir la operación aunque la instancia del modelo conserve atributos
+     * antiguos.
      */
     public function isEffectiveAt(?Carbon $at = null): bool
     {
         $moment = $at ?? Carbon::now();
 
-        if ($this->status !== AuthorizationStatus::ACTIVE) {
+        if ($this->id === null) {
             return false;
         }
 
-        if ($this->valid_from === null || $this->valid_from->greaterThan($moment)) {
+        $current = static::query()->whereKey($this->id)->first();
+
+        if ($current === null) {
             return false;
         }
 
-        return $this->valid_until === null || ! $this->valid_until->lessThan($moment);
+        if ($current->status !== AuthorizationStatus::ACTIVE) {
+            return false;
+        }
+
+        if ($current->valid_from === null || $current->valid_from->greaterThan($moment)) {
+            return false;
+        }
+
+        if ($current->valid_until !== null && $current->valid_until->lessThan($moment)) {
+            return false;
+        }
+
+        return $current->hasEffectiveLeaseAt($moment);
+    }
+
+    /** Una autorización solo concede permisos con un arrendamiento vigente. */
+    protected function hasEffectiveLeaseAt(Carbon $moment): bool
+    {
+        if ($this->lease_id === null) {
+            return true;
+        }
+
+        $lease = $this->lease;
+
+        if ($lease === null || $lease->status !== LeaseStatus::ACTIVE) {
+            return false;
+        }
+
+        // `starts_on` y `ends_on` son fechas: el arrendamiento esta vigente
+        // desde el primer dia y hasta el final del ultimo (mismo criterio que
+        // la vista `effective_property_unit_authorizations`).
+        $day = $moment->copy()->startOfDay();
+
+        return ($lease->starts_on === null || ! $lease->starts_on->greaterThan($day))
+            && ($lease->ends_on === null || ! $lease->ends_on->copy()->endOfDay()->lessThan($moment));
     }
 
     /**
