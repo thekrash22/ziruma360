@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\PropertyUnitStatus;
+use App\Enums\PropertyUnitType;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class PropertyUnit extends Model
@@ -29,6 +31,8 @@ class PropertyUnit extends Model
     ];
 
     protected $casts = [
+        'unit_type' => PropertyUnitType::class,
+        'status' => PropertyUnitStatus::class,
         'area_m2' => 'decimal:2',
         'coefficient' => 'decimal:6',
         'settings' => 'array',
@@ -68,9 +72,12 @@ class PropertyUnit extends Model
         return $this->belongsTo(BuildingFloor::class);
     }
 
-    public function apartments(): HasMany
+    /**
+     * Extensión 1:1 opcional (solo para unit_type = apartment).
+     */
+    public function apartment(): HasOne
     {
-        return $this->hasMany(Apartment::class);
+        return $this->hasOne(Apartment::class);
     }
 
     /**
@@ -78,14 +85,16 @@ class PropertyUnit extends Model
      */
     public function scopeActive($query)
     {
-        return $query->where('status', 'active');
+        return $query->where('status', PropertyUnitStatus::ACTIVE->value);
     }
 
     /**
      * Scope: by type
      */
-    public function scopeOfType($query, string $type)
+    public function scopeOfType($query, string|PropertyUnitType $type)
     {
-        return $query->where('unit_type', $type);
+        $value = $type instanceof PropertyUnitType ? $type->value : $type;
+
+        return $query->where('unit_type', $value);
     }
 }
