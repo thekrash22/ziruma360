@@ -393,20 +393,54 @@ class PropertyUnitAuthorizationsTest extends TestCase
         $this->assertFalse($authorization->isEffectiveAt(Carbon::parse('2030-06-15 15:00:00')));
     }
 
-    public function test_the_view_and_the_model_agree_on_a_timestamp_boundary(): void
+    public function test_the_view_and_the_model_agree_on_the_exact_timestamp_boundaries(): void
     {
-        $authorization = $this->authorization([
+        // El instante de referencia es la hora de inicio de la transaccion:
+        // en PostgreSQL `now()` es ese instante, asi que la vista y el modelo
+        // se evaluan en el mismo momento y se pueden comparar.
+        $now = Carbon::parse(DB::selectOne('select now() as at')->at);
+
+        // Cubre el instante actual.
+        $current = $this->authorization([
             'property_unit_id' => $this->unit()->id,
             'person_id' => $this->person()->id,
-            'valid_from' => now()->subHour()->toDateTimeString(),
-            'valid_until' => now()->addHour()->toDateTimeString(),
+            'valid_from' => $now->copy()->subMinutes(10)->toDateTimeString(),
+            'valid_until' => $now->copy()->addMinute()->toDateTimeString(),
         ]);
 
-        // La vista de la base, el ambito `effective` y el metodo coinciden:
-        // el periodo se resuelve con instantes, no con dias truncados.
-        $this->assertTrue($authorization->isEffectiveAt());
-        $this->assertSame(1, PropertyUnitAuthorization::effective()->count());
-        $this->assertSame(1, DB::table('effective_property_unit_authorizations')->count());
+        // Ya termino, dentro del mismo dia.
+        $ended = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => $now->copy()->subMinutes(10)->toDateTimeString(),
+            'valid_until' => $now->copy()->subMinute()->toDateTimeString(),
+        ]);
+
+        // Todavia no empieza, dentro del mismo dia.
+        $future = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => $now->copy()->addMinute()->toDateTimeString(),
+        ]);
+
+        // La vista de la base y el ambito `effective` coinciden.
+        $viewIds = DB::table('effective_property_unit_authorizations')->pluck('id')->all();
+        $scopeIds = PropertyUnitAuthorization::effective($now)->pluck('id')->all();
+
+        sort($viewIds);
+        sort($scopeIds);
+
+        $this->assertSame($scopeIds, $viewIds);
+
+        // Y los tres limites se resuelven con instantes: la autorizacion que
+        // cubre el instante esta vigente, la terminada y la futura no.
+        $this->assertContains($current->id, $viewIds);
+        $this->assertNotContains($ended->id, $viewIds);
+        $this->assertNotContains($future->id, $viewIds);
+
+        $this->assertTrue($current->isEffectiveAt($now));
+        $this->assertFalse($ended->isEffectiveAt($now));
+        $this->assertFalse($future->isEffectiveAt($now));
     }
 
     // ==================== RN-P10: revocacion por arrendamiento ====================
