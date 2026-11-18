@@ -99,6 +99,14 @@ class Person extends Model
     }
 
     /**
+     * Empleos de la persona (spec §4.6).
+     */
+    public function employments(): HasMany
+    {
+        return $this->hasMany(Employment::class);
+    }
+
+    /**
      * Scope: personas con un documento concreto (tipo + número).
      *
      * RN-P02: antes de crear una persona se busca por documento; si existe
