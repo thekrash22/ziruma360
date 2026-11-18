@@ -329,15 +329,63 @@ class PropertyUnitOwnershipsTest extends TestCase
             'status' => OwnershipStatus::CLOSED,
         ]);
 
-        // Reactivar una titularidad cerrada no es una edición en sitio (RN-P05
-        // no aplica), pero la suma de vigentes se vuelve a comprobar (RN-P04):
+        // Reactivar sin tocar los datos del registro no es una edicion en
+        // sitio (RN-P05 no aplica), pero la suma de vigentes se vuelve a
+        // comprobar (RN-P04): 40 (vigente) + 60 (reactivada) = 100.
+        $closed->update(['status' => OwnershipStatus::ACTIVE]);
+
+        $this->assertSame(OwnershipStatus::ACTIVE, $closed->fresh()->status);
+    }
+
+    public function test_rn_p04_rejects_a_reactivation_that_pushes_the_sum_above_one_hundred(): void
+    {
+        $unit = $this->unit();
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 40,
+        ]);
+
+        $closed = PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 70,
+            'status' => OwnershipStatus::CLOSED,
+        ]);
+
         // 40 (vigente) + 70 (reactivada) = 110 > 100.
         $this->expectException(QueryException::class);
 
-        $closed->update([
-            'status' => OwnershipStatus::ACTIVE,
-            'percentage' => 70,
+        $closed->update(['status' => OwnershipStatus::ACTIVE]);
+    }
+
+    public function test_rn_p05_rejects_changing_the_owner_while_closing(): void
+    {
+        $ownership = PropertyUnitOwnership::factory()->for($this->complex)->create([
+            'percentage' => 100,
         ]);
+
+        $this->expectException(QueryException::class);
+
+        $ownership->update([
+            'status' => OwnershipStatus::CLOSED,
+            'person_id' => $this->person()->id,
+        ]);
+    }
+
+    public function test_rn_p05_rejects_changing_the_percentage_of_a_closed_ownership(): void
+    {
+        $ownership = PropertyUnitOwnership::factory()->for($this->complex)->create([
+            'status' => OwnershipStatus::CLOSED,
+            'percentage' => 50,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $ownership->update(['percentage' => 20]);
     }
 
     // ==================== RN-P05: la titularidad no se edita en sitio ====================

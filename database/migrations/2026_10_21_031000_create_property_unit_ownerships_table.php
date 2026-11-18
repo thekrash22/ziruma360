@@ -116,6 +116,11 @@ return new class extends Migration
                     RETURN NEW;
                 END IF;
 
+                -- Serializa las inserciones concurrentes sobre la misma
+                -- unidad: sin este bloqueo dos transacciones pueden leer el
+                -- mismo total previo y commitear una suma mayor a 100.
+                PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
+
                 SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0) INTO total
                 FROM property_unit_ownerships puo
                 WHERE puo.property_unit_id = NEW.property_unit_id
@@ -150,6 +155,10 @@ return new class extends Migration
                     RETURN NEW;
                 END IF;
 
+                -- Mismo bloqueo que en el INSERT: serializa el cálculo de la
+                -- suma con las inserciones concurrentes de la misma unidad.
+                PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
+
                 SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0) INTO total
                 FROM property_unit_ownerships puo
                 WHERE puo.property_unit_id = NEW.property_unit_id
@@ -174,22 +183,22 @@ return new class extends Migration
             FOR EACH ROW EXECUTE FUNCTION property_unit_ownerships_rn_p04_update()
         SQL);
 
-        // RN-P05: la titularidad no se edita en sitio. Cerrar el registro
-        // (status distinto de 'active') sí está permitido, inclusoinformando
-        // valid_until en la misma actualización.
+        // RN-P05: la titularidad no se edita en sitio. Los campos que
+        // describen el hecho (unidad, persona, tipo, porcentaje y valid_from)
+        // son inmutables en cualquier actualización, incluso al cerrar o
+        // reactivar el registro: para cambiar el titular hay que cerrar el
+        // vigente y crear uno nuevo. Solo cambian status, valid_until y las
+        // anotaciones.
         DB::statement(<<<'SQL'
             CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p05_update() RETURNS trigger
             LANGUAGE plpgsql AS $$
             BEGIN
-                IF OLD.status = 'active' AND NEW.status = 'active'
-                   AND (
-                       NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
-                    OR NEW.person_id IS DISTINCT FROM OLD.person_id
-                    OR NEW.ownership_type IS DISTINCT FROM OLD.ownership_type
-                    OR NEW.percentage IS DISTINCT FROM OLD.percentage
-                    OR NEW.valid_from IS DISTINCT FROM OLD.valid_from
-                   ) THEN
-                    RAISE EXCEPTION 'RN-P05: la titularidad no se edita en sitio: cierre el registro vigente y cree uno nuevo'
+                IF NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
+                   OR NEW.person_id IS DISTINCT FROM OLD.person_id
+                   OR NEW.ownership_type IS DISTINCT FROM OLD.ownership_type
+                   OR NEW.percentage IS DISTINCT FROM OLD.percentage
+                   OR NEW.valid_from IS DISTINCT FROM OLD.valid_from THEN
+                    RAISE EXCEPTION 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo'
                         USING ERRCODE = '23514';
                 END IF;
 
@@ -287,21 +296,20 @@ return new class extends Migration
             END
         SQL);
 
-        // RN-P05: la titularidad no se edita en sitio.
+        // RN-P05: el registro de titularidad es inmutable (unidad, persona,
+        // tipo, porcentaje y valid_from no cambian en ninguna actualización).
+        // SQLite serializa las escrituras, por lo que la suma de RN-P04 no
+        // puede sufrir la carrera de inserciones concurrentes de PostgreSQL.
         DB::statement(<<<'SQL'
             CREATE TRIGGER property_unit_ownerships_rn_p05_update
             BEFORE UPDATE ON property_unit_ownerships
             BEGIN
-                SELECT RAISE(ABORT, 'RN-P05: la titularidad no se edita en sitio: cierre el registro vigente y cree uno nuevo')
-                WHERE OLD.status = 'active'
-                  AND NEW.status = 'active'
-                  AND (
-                        NEW.property_unit_id IS NOT OLD.property_unit_id
-                     OR NEW.person_id IS NOT OLD.person_id
-                     OR NEW.ownership_type IS NOT OLD.ownership_type
-                     OR NEW.percentage IS NOT OLD.percentage
-                     OR NEW.valid_from IS NOT OLD.valid_from
-                  );
+                SELECT RAISE(ABORT, 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo')
+                WHERE NEW.property_unit_id IS NOT OLD.property_unit_id
+                   OR NEW.person_id IS NOT OLD.person_id
+                   OR NEW.ownership_type IS NOT OLD.ownership_type
+                   OR NEW.percentage IS NOT OLD.percentage
+                   OR NEW.valid_from IS NOT OLD.valid_from;
             END
         SQL);
     }
