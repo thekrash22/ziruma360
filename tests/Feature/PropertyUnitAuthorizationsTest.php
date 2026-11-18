@@ -356,6 +356,59 @@ class PropertyUnitAuthorizationsTest extends TestCase
         $this->assertTrue($future->isEffectiveAt(Carbon::now()->addMonths(2)));
     }
 
+    public function test_an_authorization_does_not_grant_permissions_before_its_exact_start(): void
+    {
+        $authorization = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => '2030-06-15 14:30:00',
+        ]);
+
+        // La base guarda el instante exacto del inicio, no la medianoche del
+        // dia: el periodo es un instante, no un dia.
+        $stored = DB::table('property_unit_authorizations')
+            ->where('id', $authorization->id)
+            ->value('valid_from');
+
+        $this->assertSame('2030-06-15 14:30:00', $stored);
+
+        // Antes del inicio exacto no concede permisos.
+        $this->assertFalse($authorization->isEffectiveAt(Carbon::parse('2030-06-15 10:00:00')));
+        $this->assertTrue($authorization->isEffectiveAt(Carbon::parse('2030-06-15 14:30:00')));
+        $this->assertTrue($authorization->isEffectiveAt(Carbon::parse('2030-06-15 15:00:00')));
+    }
+
+    public function test_an_authorization_keeps_permissions_until_its_exact_end(): void
+    {
+        $authorization = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => '2030-06-15 10:00:00',
+            'valid_until' => '2030-06-15 14:30:00',
+        ]);
+
+        // El fin exacto es el limite: sigue vigente hasta ese instante.
+        $this->assertTrue($authorization->isEffectiveAt(Carbon::parse('2030-06-15 13:00:00')));
+        $this->assertTrue($authorization->isEffectiveAt(Carbon::parse('2030-06-15 14:30:00')));
+        $this->assertFalse($authorization->isEffectiveAt(Carbon::parse('2030-06-15 15:00:00')));
+    }
+
+    public function test_the_view_and_the_model_agree_on_a_timestamp_boundary(): void
+    {
+        $authorization = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => now()->subHour()->toDateTimeString(),
+            'valid_until' => now()->addHour()->toDateTimeString(),
+        ]);
+
+        // La vista de la base, el ambito `effective` y el metodo coinciden:
+        // el periodo se resuelve con instantes, no con dias truncados.
+        $this->assertTrue($authorization->isEffectiveAt());
+        $this->assertSame(1, PropertyUnitAuthorization::effective()->count());
+        $this->assertSame(1, DB::table('effective_property_unit_authorizations')->count());
+    }
+
     // ==================== RN-P10: revocacion por arrendamiento ====================
 
     public function test_ending_a_lease_revokes_its_dependent_authorizations(): void

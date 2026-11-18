@@ -54,8 +54,12 @@ class PropertyUnitAuthorization extends Model
         'authorization_type' => AuthorizationType::class,
         'status' => AuthorizationStatus::class,
         'scope' => 'array',
-        'valid_from' => 'date',
-        'valid_until' => 'date',
+        // El periodo de vigencia es un instante (`timestamp` en la base), no
+        // un dia: castearlo como `date` lo trunca a la medianoche y concede
+        // permisos antes del inicio real o los caduca antes del fin real,
+        // ademas de discrepar de la vista `effective_property_unit_authorizations`.
+        'valid_from' => 'datetime',
+        'valid_until' => 'datetime',
         'revoked_at' => 'datetime',
     ];
 
