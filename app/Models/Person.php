@@ -83,6 +83,22 @@ class Person extends Model
     }
 
     /**
+     * Arrendamientos en los que la persona es arrendataria (spec §4.5).
+     */
+    public function leases(): HasMany
+    {
+        return $this->hasMany(UnitLease::class, 'tenant_person_id');
+    }
+
+    /**
+     * Ocupaciones de la persona (spec §4.4).
+     */
+    public function occupancies(): HasMany
+    {
+        return $this->hasMany(UnitOccupancy::class);
+    }
+
+    /**
      * Scope: personas con un documento concreto (tipo + número).
      *
      * RN-P02: antes de crear una persona se busca por documento; si existe
