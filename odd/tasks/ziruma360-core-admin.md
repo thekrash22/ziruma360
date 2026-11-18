@@ -38,6 +38,26 @@
 | T3 | S5-S6 | Commits `1e2f3a4` (factories) + `5b6c7d8` (tests) | Commits `1e2f3a4` + `5b6c7d8` |
 | T4 | S7-S9 | Commit 0e41c0c | Commit 0e41c0c |
 | T5 | S10 | Commit 034e40e | Commit 034e40e |
+| T6 | modules | Commit 9c896e7 | Commit 9c896e7 |
+| T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
+
+---
+
+## Tasks Pendientes (según spec docs)
+
+| ID | Descripción | Depende | Prioridad |
+|---|---|---|---|
+| T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
+| T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
+| T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | Alta |
+| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
+| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
+| T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
+| T12 | `property_unit_ownerships` (titularidad con historial) | T8 | Alta |
+| T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta |
+| T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta |
+| T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media |
+| T16 | Tests Pest para nueva estructura física y relaciones | T7-T15 | Alta |
 
 ---
 
@@ -50,3 +70,7 @@
 **L3.** Reglas de desarrollo: 1) Docker commands con `docker compose exec app`, 2) SOLID + DI con Services/Actions/DTOs, 3) Template TailAdmin de `templete-ui/` adaptado a Vue 3 + Inertia, 4) Ramas `feat/<nombre>` para cada feature, usuario hace PR.
 
 **L4.** Rama feat/ui-template completada (d0e111a): UI TailAdmin adaptada, 30 tests pasando.
+
+**L5.** Tarea T6 completada: residential_complex_modules. Enum ComplexModule con 6 módulos, observer para seeding automático, 15 tests pasando (commit 9c896e7).
+
+**L6.** Tarea T7 completada: Estructura física. Building, BuildingFloor, ApartmentType con enums y BelongsToComplex. 20 tests pasando (commit 41c62ed).
