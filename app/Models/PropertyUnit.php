@@ -8,6 +8,7 @@ use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
@@ -78,6 +79,14 @@ class PropertyUnit extends Model
     public function apartment(): HasOne
     {
         return $this->hasOne(Apartment::class);
+    }
+
+    /**
+     * Historial de titularidad de la unidad (spec §4.3).
+     */
+    public function ownerships(): HasMany
+    {
+        return $this->hasMany(PropertyUnitOwnership::class);
     }
 
     /**
