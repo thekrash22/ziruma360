@@ -21,29 +21,6 @@ return new class extends Migration
      */
     public function up(): void
     {
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'pgsql') {
-            $this->upPostgres();
-        } else {
-            $this->upSqlite();
-        }
-    }
-
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
-    {
-        DB::statement('DROP TABLE IF EXISTS property_units');
-        DB::statement('DROP INDEX IF EXISTS building_floors_building_id_id_unique');
-    }
-
-    /**
-     * PostgreSQL: unicidad NULLS NOT DISTINCT + FK compuesta (S11).
-     */
-    private function upPostgres(): void
-    {
         DB::statement(<<<'SQL'
             CREATE TABLE property_units (
                 id bigserial PRIMARY KEY,
@@ -96,45 +73,12 @@ return new class extends Migration
     }
 
     /**
-     * SQLite (entorno de pruebas): equivalencia semántica de las mismas reglas.
-     *
-     * - La unicidad con building_id nulo se modela con un índice único sobre
-     *   ifnull(building_id, 0), que en SQLite sí trata los NULL como iguales.
-     * - La FK compuesta se declara inline (SQLite no permite ADD CONSTRAINT).
+     * Reverse the migrations.
      */
-    private function upSqlite(): void
+    public function down(): void
     {
-        DB::statement(<<<'SQL'
-            CREATE TABLE property_units (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uuid varchar(36) NOT NULL,
-                residential_complex_id INTEGER NOT NULL REFERENCES residential_complexes(id) ON DELETE CASCADE,
-                building_id INTEGER NULL REFERENCES buildings(id) ON DELETE RESTRICT,
-                building_floor_id INTEGER NULL,
-                unit_type varchar(255) NOT NULL,
-                number varchar(255) NOT NULL,
-                internal_code varchar(255) NULL,
-                area_m2 decimal(10, 2) NULL,
-                coefficient decimal(8, 6) NULL,
-                status varchar(255) NOT NULL DEFAULT 'active',
-                notes text NULL,
-                settings text NULL,
-                created_at datetime NULL,
-                updated_at datetime NULL,
-                CONSTRAINT property_units_uuid_unique UNIQUE (uuid),
-                CONSTRAINT property_units_building_floor_building_check
-                    CHECK (building_floor_id IS NULL OR building_id IS NOT NULL),
-                CONSTRAINT property_units_building_floor_fk
-                    FOREIGN KEY (building_id, building_floor_id)
-                    REFERENCES building_floors (building_id, id)
-                    ON DELETE RESTRICT
-            )
-        SQL);
-
-        DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS building_floors_building_id_id_unique ON building_floors (building_id, id)');
-
-        DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS property_units_number_unique ON property_units (residential_complex_id, ifnull(building_id, 0), unit_type, number)');
-
-        DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS property_units_residential_complex_id_id_unique ON property_units (residential_complex_id, id)');
+        DB::statement('DROP TABLE IF EXISTS property_units');
+        DB::statement('DROP INDEX IF EXISTS building_floors_building_id_id_unique');
     }
+
 };

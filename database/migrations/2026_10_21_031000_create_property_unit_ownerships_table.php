@@ -27,43 +27,6 @@ return new class extends Migration
      */
     public function up(): void
     {
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'pgsql') {
-            $this->upPostgres();
-        } else {
-            $this->upSqlite();
-        }
-    }
-
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
-    {
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'pgsql') {
-            DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_insert_trigger ON property_unit_ownerships');
-            DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_update_trigger ON property_unit_ownerships');
-            DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p05_update_trigger ON property_unit_ownerships');
-            DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p04_insert()');
-            DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p04_update()');
-            DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p05_update()');
-        } else {
-            DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_insert');
-            DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_update');
-            DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p05_update');
-        }
-
-        DB::statement('DROP TABLE IF EXISTS property_unit_ownerships');
-    }
-
-    /**
-     * PostgreSQL.
-     */
-    private function upPostgres(): void
-    {
         DB::statement(<<<'SQL'
             CREATE TABLE property_unit_ownerships (
                 id bigserial PRIMARY KEY,
@@ -221,105 +184,19 @@ return new class extends Migration
     }
 
     /**
-     * SQLite (entorno de pruebas): misma semántica garantizada por triggers.
+     * Reverse the migrations.
      */
-    private function upSqlite(): void
+    public function down(): void
     {
-        DB::statement(<<<'SQL'
-            CREATE TABLE property_unit_ownerships (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uuid varchar(36) NOT NULL,
-                residential_complex_id INTEGER NOT NULL REFERENCES residential_complexes(id) ON DELETE CASCADE,
-                property_unit_id INTEGER NOT NULL,
-                person_id INTEGER NOT NULL,
-                ownership_type varchar(255) NOT NULL,
-                percentage decimal(5, 2) NULL,
-                valid_from date NOT NULL,
-                valid_until date NULL,
-                status varchar(255) NOT NULL DEFAULT 'active',
-                document_reference varchar(255) NULL,
-                notes text NULL,
-                created_at datetime NULL,
-                updated_at datetime NULL,
-                CONSTRAINT property_unit_ownerships_uuid_unique UNIQUE (uuid),
-                CONSTRAINT property_unit_ownerships_percentage_check
-                    CHECK (percentage IS NULL OR (percentage >= 0 AND percentage <= 100)),
-                CONSTRAINT property_unit_ownerships_validity_check
-                    CHECK (valid_until IS NULL OR valid_until >= valid_from),
-                CONSTRAINT property_unit_ownerships_property_unit_complex_fk
-                    FOREIGN KEY (residential_complex_id, property_unit_id)
-                    REFERENCES property_units (residential_complex_id, id)
-                    ON DELETE RESTRICT,
-                CONSTRAINT property_unit_ownerships_person_complex_fk
-                    FOREIGN KEY (residential_complex_id, person_id)
-                    REFERENCES people (residential_complex_id, id)
-                    ON DELETE RESTRICT
-            )
-        SQL);
 
-        DB::statement(<<<'SQL'
-            CREATE UNIQUE INDEX property_unit_ownerships_active_unique
-            ON property_unit_ownerships (property_unit_id, person_id, ownership_type)
-            WHERE status = 'active'
-        SQL);
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_insert_trigger ON property_unit_ownerships');
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_update_trigger ON property_unit_ownerships');
+        DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p05_update_trigger ON property_unit_ownerships');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p04_insert()');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p04_update()');
+        DB::statement('DROP FUNCTION IF EXISTS property_unit_ownerships_rn_p05_update()');
 
-        // RN-P04 (INSERT).
-        DB::statement(<<<'SQL'
-            CREATE TRIGGER property_unit_ownerships_rn_p04_insert
-            BEFORE INSERT ON property_unit_ownerships
-            BEGIN
-                SELECT RAISE(ABORT, 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad supera 100 por ciento')
-                WHERE NEW.percentage IS NOT NULL
-                  AND NEW.status = 'active'
-                  AND (
-                    SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0)
-                    FROM property_unit_ownerships puo
-                    WHERE puo.property_unit_id = NEW.property_unit_id
-                      AND puo.status = 'active'
-                      AND puo.valid_from <= COALESCE(NEW.valid_until, '9999-12-31')
-                      AND COALESCE(puo.valid_until, '9999-12-31') >= NEW.valid_from
-                  ) + NEW.percentage > 100;
-            END
-        SQL);
-
-        // RN-P04 (UPDATE), excluyendo la fila que se está actualizando.
-        DB::statement(<<<'SQL'
-            CREATE TRIGGER property_unit_ownerships_rn_p04_update
-            BEFORE UPDATE ON property_unit_ownerships
-            BEGIN
-                SELECT RAISE(ABORT, 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad supera 100 por ciento')
-                WHERE NEW.percentage IS NOT NULL
-                  AND NEW.status = 'active'
-                  AND (
-                    SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0)
-                    FROM property_unit_ownerships puo
-                    WHERE puo.property_unit_id = NEW.property_unit_id
-                      AND puo.id <> OLD.id
-                      AND puo.status = 'active'
-                      AND puo.valid_from <= COALESCE(NEW.valid_until, '9999-12-31')
-                      AND COALESCE(puo.valid_until, '9999-12-31') >= NEW.valid_from
-                  ) + NEW.percentage > 100;
-            END
-        SQL);
-
-        // RN-P05: el registro de titularidad es inmutable (unidad, persona,
-        // tipo, porcentaje y valid_from no cambian en ninguna actualización).
-        // SQLite serializa las escrituras, por lo que la suma de RN-P04 no
-        // puede sufrir la carrera de inserciones concurrentes de PostgreSQL.
-        DB::statement(<<<'SQL'
-            CREATE TRIGGER property_unit_ownerships_rn_p05_update
-            BEFORE UPDATE ON property_unit_ownerships
-            BEGIN
-                SELECT RAISE(ABORT, 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo')
-                WHERE NEW.residential_complex_id IS NOT OLD.residential_complex_id
-                   OR NEW.uuid IS NOT OLD.uuid
-                   OR NEW.property_unit_id IS NOT OLD.property_unit_id
-                   OR NEW.person_id IS NOT OLD.person_id
-                   OR NEW.ownership_type IS NOT OLD.ownership_type
-                   OR NEW.percentage IS NOT OLD.percentage
-                   OR NEW.valid_from IS NOT OLD.valid_from
-                   OR NEW.document_reference IS NOT OLD.document_reference;
-            END
-        SQL);
+        DB::statement('DROP TABLE IF EXISTS property_unit_ownerships');
     }
+
 };
