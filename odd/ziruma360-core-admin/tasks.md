@@ -41,7 +41,7 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Status: done
 - Specs: S11, S12, S13
 - Dependencias: T7
-- Commit: 6d66975
+- Commit: 6d66975 + 75f5085
 
 ## T9: property_unit_relations (anexos, parqueaderos)
 - Status: pending

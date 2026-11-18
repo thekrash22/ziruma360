@@ -46,7 +46,7 @@
 | T5 | S10 | Commit 034e40e | Commit 034e40e |
 | T6 | modules | Commit 9c896e7 | Commit 9c896e7 |
 | T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
-| T8 | S11-S13 | Worker | Commit 6d66975 |
+| T8 | S11-S13 | Worker | Commits 6d66975 + 75f5085 |
 
 ---
 
@@ -56,7 +56,7 @@
 |---|---|---|---|
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
 | T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
-| T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commit 6d66975) |
+| T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commits 6d66975 + 75f5085) |
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
@@ -99,9 +99,23 @@ Desviaciones y decisiones tomadas en T8:
 
 Pendientes que surgieron de T8 (no incluidos en el alcance de T8):
 - `ResidentialComplexApiTest::test_returns_404_for_nonexistent_building` falla solo en PostgreSQL: la columna `uuid` es de tipo nativo y una cadena no-uuid produce 500 en vez de 404. Es previo a T8 (viene de T1/T7) y queda para un arreglo de validación de uuid.
-- El `BuildingController::destroy` borra el edificio sin más: con unidades asociadas ahora falla por FK. Falta el proceso controlado de desactivación previsto en RN-S02.
+- El `BuildingController::destroy` borra el edificio sin más: con unidades asociadas ahora falla por FK. Falta el proceso controlado de desactivación previsto en RN-S02. (Corregido en L9: el controller ya desactivaba, no borraba.)
+
+**L9.** Verificación independiente de T8 (agente `gentle-ai-verify` sobre el rango 66400bc..HEAD): sin hallazgos bloqueantes. Verificó en PostgreSQL 18.3 real que existen y se aplican la constraint `UNIQUE NULLS NOT DISTINCT`, la FK compuesta piso↔edificio, el CHECK de coherencia, la FK de `apartments` con el conjunto, el `UNIQUE` 1:1 y el trigger TEC-S01, replicando además el esquema desde cero con las migraciones de la rama.
+
+Corrección de una premisa: el cambio de `ON DELETE SET NULL` a `RESTRICT` **no** rompe el CRUD de edificios. `BuildingController::destroy` ya desactivaba el edificio (`status = inactive`) y no borra; en el código de aplicación no existe ningún `DELETE` sobre `buildings` ni `building_floors`. Lo único que se rechaza es el borrado directo de un edificio o piso con unidades, que es exactamente RN-S02.
+
+Hallazgos no bloqueantes del verificador y su tratamiento:
+- N-B1 (el invariante TEC-S01 se podía romper cambiando el `unit_type` de una unidad que ya tenía apartamento): **corregido en T8** con un trigger sobre `property_units` (commit 75f5085), verificado con sondas SQL en PostgreSQL.
+- N-B2 (RN-S04 "desactivar, no borrar" sin garantía: no hay `SoftDeletes` ni restricción que impida borrar una unidad con historial): **deuda abierta**. Se implementa cuando existan las tablas de historial (T9, T12, T13).
+- Los tests asertan la clase de excepción (`QueryException`) y no la constraint concreta: una mutación que reemplazara la FK por un `NOT NULL` dejaría los tests en verde. Deuda de calidad menor.
+- El dominio de valores de `unit_type`, `status` y `operational_status` está garantizada por enum de PHP, no por `CHECK` en base de datos (los edificios sí tienen CHECK). Deuda de consistencia.
+
+Pendientes que surgieron de T8 (no incluidos en el alcance de T8):
+- `ResidentialComplexApiTest::test_returns_404_for_nonexistent_building` falla solo en PostgreSQL: la columna `uuid` es de tipo nativo y una cadena no-uuid produce 500 en vez de 404. Es previo a T8 (viene de T1/T7) y queda para un arreglo de validación de uuid.
+- El `BuildingController::destroy` ya desactiva en vez de borrar, pero no distingue el motivo para el usuario; falta el proceso controlado de desactivación previsto en RN-S02.
 
 ## Delivery
 
-- Rama de feature: `feat/physical-structure`. Límite de slice registrado: 3.985 líneas en 7 commits desde `origin/main` (módulos 522, estructura física 992, UI de edificios 1.389, T8 1.092). Cada work unit supera el corte de ~400 líneas, así que la entrega debe ir en PRs encadenados/apilados (un PR por work unit: T6-T7, UI de edificios, T8) en lugar de un PR único. La creación de los PRs es decisión del usuario.
+- Rama de feature: `feat/physical-structure`. Límite de slice registrado: 4.179 líneas en 9 commits desde `origin/main` (módulos 522, estructura física 992, UI de edificios 1.389, T8 1.092 + correcciones). Cada work unit supera el corte de ~400 líneas, así que la entrega debe ir en PRs encadenados/apilados (un PR por work unit: T6-T7, UI de edificios, T8) en lugar de un PR único. La creación de los PRs es decisión del usuario.
 
