@@ -100,13 +100,15 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Diferidos con registro: RN-P12 (política del conjunto para el acceso recurrente del empleado doméstico: no existe la tabla de políticas), el vocabulario de `schedule` (el spec solo pide "JSONB validado") y la asignación del rol dentro de la membresía, que se valida en la aplicación
 
 ## T15: property_unit_authorizations
-- Status: in_progress
+- Status: in_progress (implementado y verificado; falta la revision nativa y la entrega)
 - Specs: S25, S26, S27, S28, S29, S30
 - Dependencias: T12, T13 (para la parte de RN-P10 diferida)
 - Prioridad: Media
 - Rama: feat/authorizations (desde `feat/employments`)
-- Alcance: `property_unit_id`, `person_id`, `user_id` nullable, `authorization_type` (`manager`, `host`, `delegate`), `scope` (lista JSON de permisos), `valid_from`, `valid_until` nullable, `status` (`active`, `revoked`), `granted_by`, `revoked_by`, `revoked_at`; FK compuestas `RESTRICT` a `property_units` y `people`, CHECK de vigencia y de dominios, RN-P15 (la vigencia se verifica al ejecutar, mediante una vista de autorizaciones efectivas), RN-P16 (revocar conserva el historial y es irreversible) y RN-P10 (al terminar un arrendamiento se revocan las autorizaciones dependientes)
-- Verificación: pendiente
+- Commit: ca984d5 (alcance) + f087887 (tabla con los triggers y la vista) + 868b8d3 (modelo, enums y factory) + 830a734 (relaciones) + 7b15508 (pruebas)
+- Alcance: `property_unit_id`, `person_id`, `user_id` nullable, `authorization_type` (`manager`, `host`, `delegate`), `scope` (lista JSON de permisos), `valid_from`, `valid_until` nullable, `status` (`active`, `revoked`), `granted_by`, `revoked_by`, `revoked_at`; FK compuestas `RESTRICT` a `property_units`, `people` y `unit_leases`, CHECK de vigencia y de dominios, RN-P15 (la vigencia se verifica al ejecutar, mediante la vista `effective_property_unit_authorizations` y el ámbito `effective()` del modelo), RN-P16 (revocar conserva el historial y es irreversible) y RN-P10 (al terminar un arrendamiento se revocan las autorizaciones dependientes)
+- Verificación: suite completa en PostgreSQL 18.3 real **259 pasan, 0 skip, 604 assertions** (240 previos + 19 nuevos); sonda por SQL crudo que confirma en el motor el rechazo de una cuenta ajena a la persona, la imposibilidad de reactivar una autorización revocada, el rechazo de un `scope` que no es lista, el rechazo de un periodo invertido, el rechazo por FK compuesta de una persona de otro conjunto y la exclusión de la revocada de la vista de vigentes; catálogo de 4 triggers, 4 CHECKs, 3 FK compuestas y la vista de autorizaciones efectivas
+- Slice: 1.094 líneas en 10 archivos y 5 commits sobre `feat/employments`; entrega en PR propio con `size:exception` (dos unidades cohesivas superan el corte de ~400 líneas)
 - Diferidos con registro: vocabulario cerrado de `scope` (el spec pide "lista validada" pero no define el vocabulario, igual que `delegated_permissions` y `schedule`) y el hallazgo informativo `R4-access-authorization-stale-after-membership-revocation` de la revisión nativa de T14 (RN-P11 queda obsoleto tras suspender o revocar la membresía; su corrección natural es un trigger sobre `residential_complex_memberships`)
 
 ## T16: Suite Pest de estructura física y relaciones
