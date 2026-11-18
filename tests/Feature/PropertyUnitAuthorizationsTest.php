@@ -393,6 +393,43 @@ class PropertyUnitAuthorizationsTest extends TestCase
         $this->assertFalse($authorization->isEffectiveAt(Carbon::parse('2030-06-15 15:00:00')));
     }
 
+    public function test_an_authorization_is_effective_at_its_exact_start_and_end_instants(): void
+    {
+        // El instante evaluado, con resolucion de segundo, que es la que
+        // almacena la columna `timestamp(0)`.
+        $moment = Carbon::parse('2030-06-15 14:30:00');
+
+        // Empieza exactamente en el instante evaluado.
+        $starting = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => $moment->toDateTimeString(),
+        ]);
+
+        // Termina exactamente en el instante evaluado.
+        $ending = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => $moment->copy()->subHour()->toDateTimeString(),
+            'valid_until' => $moment->toDateTimeString(),
+        ]);
+
+        // Los dos limites son inclusivos: en el instante exacto, la
+        // autorizacion todavia concede permisos.
+        $this->assertTrue($starting->isEffectiveAt($moment));
+        $this->assertTrue($ending->isEffectiveAt($moment));
+
+        $this->assertContains($starting->id, PropertyUnitAuthorization::effective($moment)->pluck('id')->all());
+        $this->assertContains($ending->id, PropertyUnitAuthorization::effective($moment)->pluck('id')->all());
+
+        // Y son estrictos un segundo antes y un segundo despues.
+        $this->assertFalse($starting->isEffectiveAt($moment->copy()->subSecond()));
+        $this->assertFalse($ending->isEffectiveAt($moment->copy()->addSecond()));
+
+        $this->assertNotContains($starting->id, PropertyUnitAuthorization::effective($moment->copy()->subSecond())->pluck('id')->all());
+        $this->assertNotContains($ending->id, PropertyUnitAuthorization::effective($moment->copy()->addSecond())->pluck('id')->all());
+    }
+
     public function test_the_view_and_the_model_agree_on_the_exact_timestamp_boundaries(): void
     {
         // El instante de referencia es la hora de inicio de la transaccion:
@@ -400,27 +437,46 @@ class PropertyUnitAuthorizationsTest extends TestCase
         // se evaluan en el mismo momento y se pueden comparar.
         $now = Carbon::parse(DB::selectOne('select now() as at')->at);
 
+        // La columna es `timestamp(0)`: el segundo exacto es la unidad en la
+        // que los limites se pueden expresar.
+        $second = $now->copy()->startOfSecond();
+
         // Cubre el instante actual.
         $current = $this->authorization([
             'property_unit_id' => $this->unit()->id,
             'person_id' => $this->person()->id,
-            'valid_from' => $now->copy()->subMinutes(10)->toDateTimeString(),
-            'valid_until' => $now->copy()->addMinute()->toDateTimeString(),
+            'valid_from' => $second->copy()->subMinute()->toDateTimeString(),
+            'valid_until' => $second->copy()->addMinute()->toDateTimeString(),
+        ]);
+
+        // Empieza en el segundo exacto de la referencia.
+        $starting = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => $second->toDateTimeString(),
+        ]);
+
+        // Termina en el segundo siguiente a la referencia.
+        $ending = $this->authorization([
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+            'valid_from' => $second->copy()->subMinute()->toDateTimeString(),
+            'valid_until' => $second->copy()->addSecond()->toDateTimeString(),
         ]);
 
         // Ya termino, dentro del mismo dia.
         $ended = $this->authorization([
             'property_unit_id' => $this->unit()->id,
             'person_id' => $this->person()->id,
-            'valid_from' => $now->copy()->subMinutes(10)->toDateTimeString(),
-            'valid_until' => $now->copy()->subMinute()->toDateTimeString(),
+            'valid_from' => $second->copy()->subMinutes(10)->toDateTimeString(),
+            'valid_until' => $second->copy()->subSecond()->toDateTimeString(),
         ]);
 
         // Todavia no empieza, dentro del mismo dia.
         $future = $this->authorization([
             'property_unit_id' => $this->unit()->id,
             'person_id' => $this->person()->id,
-            'valid_from' => $now->copy()->addMinute()->toDateTimeString(),
+            'valid_from' => $second->copy()->addSecond()->toDateTimeString(),
         ]);
 
         // La vista de la base y el ambito `effective` coinciden.
@@ -432,13 +488,19 @@ class PropertyUnitAuthorizationsTest extends TestCase
 
         $this->assertSame($scopeIds, $viewIds);
 
-        // Y los tres limites se resuelven con instantes: la autorizacion que
-        // cubre el instante esta vigente, la terminada y la futura no.
+        // Y los limites se resuelven con instantes: la autorizacion que cubre
+        // el instante esta vigente, la que empieza en el segundo exacto
+        // tambien, la que termina en el segundo siguiente tambien, y la
+        // terminada y la futura no.
         $this->assertContains($current->id, $viewIds);
+        $this->assertContains($starting->id, $viewIds);
+        $this->assertContains($ending->id, $viewIds);
         $this->assertNotContains($ended->id, $viewIds);
         $this->assertNotContains($future->id, $viewIds);
 
         $this->assertTrue($current->isEffectiveAt($now));
+        $this->assertTrue($starting->isEffectiveAt($now));
+        $this->assertTrue($ending->isEffectiveAt($now));
         $this->assertFalse($ended->isEffectiveAt($now));
         $this->assertFalse($future->isEffectiveAt($now));
     }
