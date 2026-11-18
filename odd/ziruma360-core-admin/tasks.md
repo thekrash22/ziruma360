@@ -100,7 +100,7 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Diferidos con registro: RN-P12 (política del conjunto para el acceso recurrente del empleado doméstico: no existe la tabla de políticas), el vocabulario de `schedule` (el spec solo pide "JSONB validado") y la asignación del rol dentro de la membresía, que se valida en la aplicación
 
 ## T15: property_unit_authorizations
-- Status: implemented (implementado, verificado y revisado nativamente; la entrega queda pendiente)
+- Status: delivered (implementado, verificado, revisado nativamente y empujado; el PR es manual)
 - Specs: S25, S26, S27, S28, S29, S30
 - Dependencias: T12, T13 (para la parte de RN-P10 diferida)
 - Prioridad: Media
@@ -111,6 +111,7 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Revision nativa: dos transacciones. `review-b54a7ad93769dc30` termino `escalated` (terminal) tras la correccion de `R1-ended-lease-dependency` porque el validador detecto la regresion `R2-final-day-lease-effectiveness-inconsistency` introducida por esa correccion. `review-99406f56747364f4` quedo **aprobada** tras corregir `R3-stale-effective-check` (la decision de vigencia relee el estado actual de la base) y la autoridad quedo quemada con `review.acknowledge-approved`
 - Deuda: dos hallazgos informativos no bloqueantes de la revision (`R3-factory-state-mismatch`: los helpers de la factory pueden construir registros de otro conjunto; `R3-lease-unit-mismatch`: una autorizacion con `lease_id` no esta atada a la unidad de ese arrendamiento), el vocabulario cerrado de `scope` sin definir por el spec, y el hallazgo heredado de T14 `R4-access-authorization-stale-after-membership-revocation`
 - Slice: 1.385 líneas en 10 archivos y 6 commits sobre `feat/employments`; entrega en PR propio con `size:exception` (dos unidades cohesivas superan el corte de ~400 líneas)
+- Entrega: push autorizado y ejecutado (`origin/feat/authorizations` en `3a3738c`); PR manual en `https://github.com/thekrash22/ziruma360/pull/new/feat/authorizations` con base `feat/employments`
 - Diferidos con registro: vocabulario cerrado de `scope` (el spec pide "lista validada" pero no define el vocabulario, igual que `delegated_permissions` y `schedule`) y el hallazgo informativo `R4-access-authorization-stale-after-membership-revocation` de la revisión nativa de T14 (RN-P11 queda obsoleto tras suspender o revocar la membresía; su corrección natural es un trigger sobre `residential_complex_memberships`)
 
 ## T16: Suite Pest de estructura física y relaciones
