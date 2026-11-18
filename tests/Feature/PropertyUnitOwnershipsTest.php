@@ -11,6 +11,7 @@ use App\Models\PropertyUnitOwnership;
 use App\Models\ResidentialComplex;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -494,6 +495,23 @@ class PropertyUnitOwnershipsTest extends TestCase
             'person_id' => $this->person()->id,
             'percentage' => 50,
         ]);
+    }
+
+    public function test_rn_p05_rejects_changing_the_created_at_of_an_ownership(): void
+    {
+        $ownership = PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $this->unit()->id,
+            'person_id' => $this->person()->id,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        // La marca de creacion es parte del hecho historico: reescribirla
+        // permitiria falsear la fecha real de la titularidad.
+        DB::table('property_unit_ownerships')
+            ->where('id', $ownership->id)
+            ->update(['created_at' => now()->subYear()]);
     }
 
     public function test_rn_p05_rejects_changing_the_uuid_of_an_ownership(): void

@@ -5,6 +5,7 @@ namespace Tests;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use PDO;
+use PDOException;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -45,7 +46,17 @@ abstract class TestCase extends BaseTestCase
         $statement->execute(['database' => $database]);
 
         if ($statement->fetchColumn() === false) {
-            $pdo->exec(sprintf('CREATE DATABASE "%s"', str_replace('"', '', $database)));
+            try {
+                $pdo->exec(sprintf('CREATE DATABASE "%s"', str_replace('"', '', $database)));
+            } catch (PDOException $exception) {
+                // Dos procesos que inician la suite a la vez pueden intentar
+                // crear la base a la vez: el que pierde la carrera recibe
+                // "database already exists" (42P04), que no es un fallo.
+                if (! str_contains($exception->getMessage(), '42P04')
+                    && ! str_contains($exception->getMessage(), 'already exists')) {
+                    throw $exception;
+                }
+            }
         }
     }
 }

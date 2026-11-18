@@ -214,7 +214,8 @@ return new class extends Migration
                    OR NEW.ownership_type IS DISTINCT FROM OLD.ownership_type
                    OR NEW.percentage IS DISTINCT FROM OLD.percentage
                    OR NEW.valid_from IS DISTINCT FROM OLD.valid_from
-                   OR NEW.document_reference IS DISTINCT FROM OLD.document_reference THEN
+                   OR NEW.document_reference IS DISTINCT FROM OLD.document_reference
+                   OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
                     RAISE EXCEPTION 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo'
                         USING ERRCODE = '23514';
                 END IF;

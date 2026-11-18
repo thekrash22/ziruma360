@@ -42,6 +42,13 @@ class PropertyUnitOwnershipFactory extends Factory
     /**
      * Guarantee a valid default state: the unit and the person always belong
      * to the same complex as the ownership (ACE-C02).
+     *
+     * The dependency rows are created in afterMaking on purpose: the
+     * ownership row references an existing unit and person at insert time
+     * (the foreign keys are NOT NULL), so the ids have to exist before the
+     * insert. The deliberate trade-off is that make() also persists those two
+     * dependencies; tests that only need an in-memory model must pass the
+     * ids explicitly.
      */
     public function configure(): static
     {

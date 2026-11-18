@@ -27,7 +27,7 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
 
     private ?PDO $second = null;
 
-    /** @var array<string, int> */
+    /** @var array<int, array{table: string, id: int}> */
     private array $referenceRows = [];
 
     protected function tearDown(): void
@@ -92,6 +92,76 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
     }
 
     /**
+     * Dos escrituras concurrentes sobre la misma unidad: la segunda queda
+     * esperando el bloqueo de fila que toma el trigger de RN-P04 y, cuando la
+     * primera se confirma, el trigger ve el total real y rechaza la segunda.
+     */
+    public function test_a_competing_write_is_rejected_after_the_first_one_commits(): void
+    {
+        $second = $this->secondConnection();
+        $rows = $this->createReferenceRows($second);
+
+        // Escritor A: 60% en una transaccion abierta (la unidad queda
+        // bloqueada por el trigger y el total todavia no es visible).
+        $second->beginTransaction();
+        $this->insertOwnership($second, $rows, 60, $rows['people']);
+
+        [$parentSide, $childSide] = stream_socket_pair(
+            STREAM_PF_UNIX,
+            STREAM_SOCK_STREAM,
+            STREAM_IPPROTO_IP
+        );
+
+        $pid = pcntl_fork();
+
+        if ($pid === 0) {
+            // Escritor B, en otro proceso: intenta escribir 50%.
+            fclose($parentSide);
+
+            $outcome = 'inserted';
+
+            try {
+                $child = $this->thirdConnection();
+                $child->beginTransaction();
+
+                // Senal de "voy a insertar": el padre confirma despues, para
+                // que esta escritura compita de verdad con la primera.
+                fwrite($childSide, "ready\n");
+                fflush($childSide);
+
+                $child->exec($this->ownershipInsertSql($rows, 50, $rows['people_secondary']));
+                $child->rollBack();
+            } catch (PDOException $exception) {
+                $outcome = 'error: '.$exception->getMessage();
+            }
+
+            fwrite($childSide, $outcome."\n");
+            fflush($childSide);
+
+            // Salida dura: el cierre ordenado de PHP destruiria los PDO
+            // heredados del padre y cortaria su conexion con el servidor.
+            posix_kill(posix_getpid(), SIGKILL);
+        }
+
+        fclose($childSide);
+
+        // El hijo ya va a insertar: se espera su senal antes de confirmar.
+        fgets($parentSide);
+        usleep(200000);
+
+        // Escritor A confirma y libera el bloqueo de la unidad.
+        $second->commit();
+
+        $outcome = (string) stream_get_contents($parentSide);
+
+        fclose($parentSide);
+        pcntl_waitpid($pid, $status);
+
+        $this->assertStringContainsString('error:', $outcome);
+        $this->assertStringContainsString('RN-P04', $outcome);
+    }
+
+    /**
      * @param  array<string, int>  $rows
      */
     private function assertLockTimeout(callable $attempt): void
@@ -128,6 +198,41 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
         );
 
         return $this->second;
+    }
+
+    private function thirdConnection(): PDO
+    {
+        $config = config('database.connections.pgsql');
+
+        return new PDO(
+            sprintf(
+                'pgsql:host=%s;port=%s;dbname=%s',
+                $config['host'],
+                $config['port'],
+                $config['database'],
+            ),
+            $config['username'],
+            $config['password'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+        );
+    }
+
+    /**
+     * @param  array<string, int>  $rows
+     */
+    private function ownershipInsertSql(array $rows, int $percentage, int $personId): string
+    {
+        return sprintf(
+            "INSERT INTO property_unit_ownerships (uuid, residential_complex_id, property_unit_id, "
+            ."person_id, ownership_type, percentage, valid_from, status, created_at, updated_at) "
+            ."VALUES ('%s', %d, %d, %d, '%s', %d, CURRENT_DATE, 'active', NOW(), NOW())",
+            (string) Str::uuid(),
+            $rows['residential_complexes'],
+            $rows['property_units'],
+            $personId,
+            OwnershipType::OWNER->value,
+            $percentage,
+        );
     }
 
     /**
@@ -179,7 +284,7 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $this->insert($second, 'people', [
+        $personId = $this->insert($second, 'people', [
             'uuid' => (string) Str::uuid(),
             'residential_complex_id' => $complexId,
             'full_name' => 'Titular Concurrente',
@@ -188,13 +293,29 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        return $this->referenceRows;
+        // Un segundo titular: dos cotitulares distintos pueden coexistir y
+        // compiten por el mismo total de porcentajes.
+        $secondaryPersonId = $this->insert($second, 'people', [
+            'uuid' => (string) Str::uuid(),
+            'residential_complex_id' => $complexId,
+            'full_name' => 'Titular Competidor',
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return [
+            'residential_complexes' => $complexId,
+            'property_units' => $unitId,
+            'people' => $personId,
+            'people_secondary' => $secondaryPersonId,
+        ];
     }
 
     /**
      * @param  array<string, int>  $rows
      */
-    private function insertOwnership(PDO $second, array $rows, int $percentage): int
+    private function insertOwnership(PDO $second, array $rows, int $percentage, ?int $personId = null): int
     {
         $now = now();
 
@@ -202,7 +323,7 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
             'uuid' => (string) Str::uuid(),
             'residential_complex_id' => $rows['residential_complexes'],
             'property_unit_id' => $rows['property_units'],
-            'person_id' => $rows['people'],
+            'person_id' => $personId ?? $rows['people'],
             'ownership_type' => OwnershipType::OWNER->value,
             'percentage' => $percentage,
             'valid_from' => $now->toDateString(),
@@ -234,7 +355,7 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
 
         $id = (int) $statement->fetchColumn();
 
-        $this->referenceRows[$table] = $id;
+        $this->referenceRows[] = ['table' => $table, 'id' => $id];
 
         return $id;
     }
@@ -245,19 +366,10 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
             return;
         }
 
-        foreach ([
-            'property_unit_ownerships',
-            'property_units',
-            'people',
-            'building_floors',
-            'buildings',
-            'residential_complexes',
-        ] as $table) {
-            if (isset($this->referenceRows[$table])) {
-                $this->second->exec(
-                    'DELETE FROM '.$table.' WHERE id = '.(int) $this->referenceRows[$table]
-                );
-            }
+        foreach ($this->referenceRows as $row) {
+            $this->second->exec(
+                'DELETE FROM '.$row['table'].' WHERE id = '.(int) $row['id']
+            );
         }
     }
 }
