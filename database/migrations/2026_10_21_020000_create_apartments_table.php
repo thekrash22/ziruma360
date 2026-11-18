@@ -37,9 +37,12 @@ return new class extends Migration
         if ($driver === 'pgsql') {
             DB::statement('DROP TRIGGER IF EXISTS apartments_tec_s01_trigger ON apartments');
             DB::statement('DROP FUNCTION IF EXISTS apartments_enforce_apartment_unit_type()');
+            DB::statement('DROP TRIGGER IF EXISTS property_units_apartment_type_guard ON property_units');
+            DB::statement('DROP FUNCTION IF EXISTS property_units_guard_apartment_type()');
         } else {
             DB::statement('DROP TRIGGER IF EXISTS apartments_tec_s01_insert');
             DB::statement('DROP TRIGGER IF EXISTS apartments_tec_s01_update');
+            DB::statement('DROP TRIGGER IF EXISTS property_units_apartment_type_guard');
         }
 
         DB::statement('DROP TABLE IF EXISTS apartments');
@@ -96,6 +99,30 @@ return new class extends Migration
             BEFORE INSERT OR UPDATE ON apartments
             FOR EACH ROW EXECUTE FUNCTION apartments_enforce_apartment_unit_type()
         SQL);
+
+        // Lado inverso de TEC-S01: una unidad que ya tiene apartamento no puede
+        // cambiar de `unit_type` a algo distinto de 'apartment'.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION property_units_guard_apartment_type() RETURNS trigger
+            LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.unit_type <> 'apartment' AND EXISTS (
+                    SELECT 1 FROM apartments a WHERE a.property_unit_id = NEW.id
+                ) THEN
+                    RAISE EXCEPTION 'TEC-S01: la unidad % tiene un apartamento y no puede cambiar de tipo', NEW.id
+                        USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER property_units_apartment_type_guard
+            BEFORE UPDATE OF unit_type ON property_units
+            FOR EACH ROW EXECUTE FUNCTION property_units_guard_apartment_type()
+        SQL);
     }
 
     /**
@@ -147,6 +174,17 @@ return new class extends Migration
                     SELECT 1 FROM property_units pu
                     WHERE pu.id = NEW.property_unit_id AND pu.unit_type = 'apartment'
                 );
+            END
+        SQL);
+
+        // Lado inverso de TEC-S01 (misma semántica que la rama Postgres).
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER property_units_apartment_type_guard
+            BEFORE UPDATE OF unit_type ON property_units
+            BEGIN
+                SELECT RAISE(ABORT, 'TEC-S01: la unidad no puede cambiar de tipo mientras tenga un apartamento')
+                WHERE NEW.unit_type <> 'apartment'
+                  AND EXISTS (SELECT 1 FROM apartments a WHERE a.property_unit_id = OLD.id);
             END
         SQL);
     }

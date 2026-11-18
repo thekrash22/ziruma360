@@ -268,4 +268,21 @@ class PropertyUnitsTest extends TestCase
 
         $this->assertDatabaseMissing('buildings', ['id' => $building->id]);
     }
+
+    public function test_property_unit_is_not_visible_from_another_complex(): void
+    {
+        $otherComplex = ResidentialComplex::factory()->create();
+
+        $unit = PropertyUnit::factory()->for($this->complex)->create([
+            'unit_type' => PropertyUnitType::APARTMENT,
+        ]);
+
+        $this->assertNull(
+            PropertyUnit::forComplex($otherComplex)->find($unit->id)
+        );
+
+        $this->assertNotNull(
+            PropertyUnit::forComplex($this->complex)->find($unit->id)
+        );
+    }
 }

@@ -207,4 +207,17 @@ class ApartmentsTest extends TestCase
             Apartment::forComplex($this->complex)->find($apartment->id)
         );
     }
+
+    public function test_property_unit_cannot_change_away_from_apartment_type_while_it_has_an_apartment(): void
+    {
+        $unit = $this->unit(PropertyUnitType::APARTMENT);
+
+        Apartment::factory()->for($this->complex)->create([
+            'property_unit_id' => $unit->id,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $unit->update(['unit_type' => PropertyUnitType::PRIVATE_PARKING]);
+    }
 }
