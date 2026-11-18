@@ -430,15 +430,18 @@ class PropertyUnitAuthorizationsTest extends TestCase
         $this->assertNotContains($ending->id, PropertyUnitAuthorization::effective($moment->copy()->addSecond())->pluck('id')->all());
     }
 
-    public function test_the_view_and_the_model_agree_on_the_exact_timestamp_boundaries(): void
+    public function test_the_view_and_the_model_agree_on_the_timestamp_boundaries(): void
     {
         // El instante de referencia es la hora de inicio de la transaccion:
         // en PostgreSQL `now()` es ese instante, asi que la vista y el modelo
         // se evaluan en el mismo momento y se pueden comparar.
         $now = Carbon::parse(DB::selectOne('select now() as at')->at);
 
-        // La columna es `timestamp(0)`: el segundo exacto es la unidad en la
-        // que los limites se pueden expresar.
+        // La columna es `timestamp(0)`: el segundo es la unidad en la que los
+        // limites se pueden expresar, y `now()` tiene precision de
+        // microsegundo. Por eso los fixtures se alinean al segundo que
+        // contiene a `now()`: el resultado no depende de la fraccion del
+        // instante de la transaccion.
         $second = $now->copy()->startOfSecond();
 
         // Cubre el instante actual.
@@ -449,14 +452,14 @@ class PropertyUnitAuthorizationsTest extends TestCase
             'valid_until' => $second->copy()->addMinute()->toDateTimeString(),
         ]);
 
-        // Empieza en el segundo exacto de la referencia.
+        // Empieza en el segundo que contiene al instante.
         $starting = $this->authorization([
             'property_unit_id' => $this->unit()->id,
             'person_id' => $this->person()->id,
             'valid_from' => $second->toDateTimeString(),
         ]);
 
-        // Termina en el segundo siguiente a la referencia.
+        // Termina en el segundo siguiente al que contiene al instante.
         $ending = $this->authorization([
             'property_unit_id' => $this->unit()->id,
             'person_id' => $this->person()->id,
@@ -489,9 +492,9 @@ class PropertyUnitAuthorizationsTest extends TestCase
         $this->assertSame($scopeIds, $viewIds);
 
         // Y los limites se resuelven con instantes: la autorizacion que cubre
-        // el instante esta vigente, la que empieza en el segundo exacto
-        // tambien, la que termina en el segundo siguiente tambien, y la
-        // terminada y la futura no.
+        // el instante esta vigente, la que empieza en el segundo que contiene
+        // al instante tambien, la que termina en el segundo siguiente tambien,
+        // y la terminada y la futura no.
         $this->assertContains($current->id, $viewIds);
         $this->assertContains($starting->id, $viewIds);
         $this->assertContains($ending->id, $viewIds);
@@ -503,6 +506,22 @@ class PropertyUnitAuthorizationsTest extends TestCase
         $this->assertTrue($ending->isEffectiveAt($now));
         $this->assertFalse($ended->isEffectiveAt($now));
         $this->assertFalse($future->isEffectiveAt($now));
+    }
+
+    public function test_the_view_compares_the_validity_period_with_inclusive_operators(): void
+    {
+        // La vista decide la vigencia con `<=` y `>=` sobre `now()`, de modo
+        // que un limite exactamente igual al instante evaluado concede
+        // permisos. La columna es `timestamp(0)` y `now()` tiene precision
+        // de microsegundo, asi que la igualdad literal no se puede escribir
+        // como un fixture: lo que se verifica es que los operadores de la
+        // vista son los inclusivos.
+        $definition = DB::selectOne(
+            "select pg_get_viewdef('effective_property_unit_authorizations'::regclass) as def"
+        )->def;
+
+        $this->assertStringContainsString('valid_from <= now()', $definition);
+        $this->assertStringContainsString('valid_until >= now()', $definition);
     }
 
     // ==================== RN-P10: revocacion por arrendamiento ====================
