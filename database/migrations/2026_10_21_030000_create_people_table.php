@@ -43,7 +43,9 @@ return new class extends Migration
                 notes text NULL,
                 created_at timestamp(0) without time zone NULL,
                 updated_at timestamp(0) without time zone NULL,
-                CONSTRAINT people_uuid_unique UNIQUE (uuid)
+                CONSTRAINT people_uuid_unique UNIQUE (uuid),
+                CONSTRAINT people_status_check
+                    CHECK (status IN ('active', 'inactive'))
             )
         SQL);
 

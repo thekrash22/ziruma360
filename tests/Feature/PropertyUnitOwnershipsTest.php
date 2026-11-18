@@ -311,7 +311,7 @@ class PropertyUnitOwnershipsTest extends TestCase
         $this->assertNotNull($third->id);
     }
 
-    public function test_rn_p04_applies_when_a_closed_ownership_is_reactivated(): void
+    public function test_rn_p05_allows_reactivating_a_closed_ownership_without_rewriting_its_facts(): void
     {
         $unit = $this->unit();
 
@@ -377,7 +377,7 @@ class PropertyUnitOwnershipsTest extends TestCase
         ]);
     }
 
-    public function test_rn_p04_rejects_changing_the_percentage_of_a_closed_ownership(): void
+    public function test_rn_p05_rejects_changing_the_percentage_of_a_closed_ownership(): void
     {
         $ownership = PropertyUnitOwnership::factory()->for($this->complex)->create([
             'status' => OwnershipStatus::CLOSED,
@@ -433,6 +433,66 @@ class PropertyUnitOwnershipsTest extends TestCase
             'person_id' => $this->person()->id,
             'percentage' => 50,
             'valid_from' => now()->addMonth()->toDateString(),
+        ]);
+    }
+
+    public function test_rn_p04_allows_a_succession_of_owners_whose_periods_do_not_overlap(): void
+    {
+        $unit = $this->unit();
+
+        // Dos cotitulares sucesivos con periodos disjuntos: nunca hay mas de
+        // uno vigente a la vez, asi que la suma instantanea nunca supera 100.
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 40,
+            'valid_from' => now()->startOfYear()->toDateString(),
+            'valid_until' => now()->startOfYear()->addMonths(6)->toDateString(),
+        ]);
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 40,
+            'valid_from' => now()->startOfYear()->addMonths(7)->toDateString(),
+            'valid_until' => now()->startOfYear()->addMonths(12)->toDateString(),
+        ]);
+
+        // Un tercero que cubre todo el ano: en cada instante hay como maximo
+        // 40 (uno de los dos) + 30 = 70.
+        $third = PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 30,
+            'valid_from' => now()->startOfYear()->toDateString(),
+            'valid_until' => now()->startOfYear()->addMonths(12)->toDateString(),
+        ]);
+
+        $this->assertNotNull($third->id);
+    }
+
+    public function test_rn_p04_rejects_an_ownership_that_exceeds_one_hundred_at_the_same_instant(): void
+    {
+        $unit = $this->unit();
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 60,
+        ]);
+
+        // 60 (vigente, sin fin) + 50 (nuevo) = 110 en el mismo instante.
+        $this->expectException(QueryException::class);
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 50,
         ]);
     }
 

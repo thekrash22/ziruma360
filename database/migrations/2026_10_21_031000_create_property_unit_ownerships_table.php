@@ -48,6 +48,10 @@ return new class extends Migration
                     CHECK (percentage IS NULL OR (percentage >= 0 AND percentage <= 100)),
                 CONSTRAINT property_unit_ownerships_validity_check
                     CHECK (valid_until IS NULL OR valid_until >= valid_from),
+                CONSTRAINT property_unit_ownerships_ownership_type_check
+                    CHECK (ownership_type IN ('owner', 'co_owner', 'usufructuary', 'other')),
+                CONSTRAINT property_unit_ownerships_status_check
+                    CHECK (status IN ('active', 'closed', 'cancelled')),
                 CONSTRAINT property_unit_ownerships_property_unit_complex_fk
                     FOREIGN KEY (residential_complex_id, property_unit_id)
                     REFERENCES property_units (residential_complex_id, id)
@@ -66,14 +70,15 @@ return new class extends Migration
             WHERE status = 'active'
         SQL);
 
-        // RN-P04 (INSERT): la suma de los porcentajes de las titularidades
-        // vigentes de la misma unidad cuyo periodo se superpone al de la
-        // nueva, mas el porcentaje nuevo, no puede superar 100.
+        // RN-P04 (INSERT): el maximo instantaneo de la suma de los porcentajes
+        // de las titularidades vigentes (status active) de la misma unidad
+        // cuyo periodo se superpone al de la nueva, mas el porcentaje nuevo,
+        // no puede superar 100.
         DB::statement(<<<'SQL'
             CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p04_insert() RETURNS trigger
             LANGUAGE plpgsql AS $$
             DECLARE
-                total numeric(12, 2);
+                peak numeric(12, 2);
             BEGIN
                 IF NEW.percentage IS NULL OR NEW.status <> 'active' THEN
                     RETURN NEW;
@@ -84,17 +89,40 @@ return new class extends Migration
                 -- mismo total previo y commitear una suma mayor a 100.
                 PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
 
-                -- Se suman las titularidades vigentes cuyo periodo se superpone
-                -- al de la nueva, no solo las vigentes en su fecha de inicio:
-                -- asi el control no depende del orden en que se registren.
-                SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0) INTO total
-                FROM property_unit_ownerships puo
-                WHERE puo.property_unit_id = NEW.property_unit_id
-                  AND puo.status = 'active'
-                  AND puo.valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
-                  AND COALESCE(puo.valid_until, 'infinity'::date) >= NEW.valid_from;
+                -- La suma se evalua en cada instante en que arranca o termina
+                -- un periodo (los unicos puntos donde la suma puede cambiar):
+                -- asi el control no depende del orden en que se registren las
+                -- titularidades ni del orden de sus periodos, y no rechaza
+                -- una succession legitima de cotitulares cuyos periodos no
+                -- se superponen entre si.
+                WITH spans AS (
+                    SELECT valid_from AS lo,
+                           COALESCE(valid_until, 'infinity'::date) AS hi,
+                           COALESCE(percentage, 0) AS pct
+                    FROM property_unit_ownerships
+                    WHERE property_unit_id = NEW.property_unit_id
+                      AND status = 'active'
+                      AND valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
+                      AND COALESCE(valid_until, 'infinity'::date) >= NEW.valid_from
+                    UNION ALL
+                    SELECT NEW.valid_from,
+                           COALESCE(NEW.valid_until, 'infinity'::date),
+                           COALESCE(NEW.percentage, 0)
+                ),
+                points AS (
+                    SELECT lo AS p FROM spans
+                    UNION
+                    SELECT hi FROM spans WHERE hi <> 'infinity'::date
+                )
+                SELECT COALESCE(MAX(total), 0) INTO peak
+                FROM (
+                    SELECT SUM(s.pct) AS total
+                    FROM spans s
+                    JOIN points pt ON pt.p >= s.lo AND pt.p <= s.hi
+                    GROUP BY pt.p
+                ) totals;
 
-                IF total + NEW.percentage > 100 THEN
+                IF peak > 100 THEN
                     RAISE EXCEPTION 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad % supera 100 por ciento', NEW.property_unit_id
                         USING ERRCODE = '23514';
                 END IF;
@@ -115,25 +143,45 @@ return new class extends Migration
             CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p04_update() RETURNS trigger
             LANGUAGE plpgsql AS $$
             DECLARE
-                total numeric(12, 2);
+                peak numeric(12, 2);
             BEGIN
                 IF NEW.percentage IS NULL OR NEW.status <> 'active' THEN
                     RETURN NEW;
                 END IF;
 
-                -- Mismo bloqueo que en el INSERT: serializa el cálculo de la
+                -- Mismo bloqueo que en el INSERT: serializa el calculo de la
                 -- suma con las inserciones concurrentes de la misma unidad.
                 PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
 
-                SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0) INTO total
-                FROM property_unit_ownerships puo
-                WHERE puo.property_unit_id = NEW.property_unit_id
-                  AND puo.id <> OLD.id
-                  AND puo.status = 'active'
-                  AND puo.valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
-                  AND COALESCE(puo.valid_until, 'infinity'::date) >= NEW.valid_from;
+                WITH spans AS (
+                    SELECT valid_from AS lo,
+                           COALESCE(valid_until, 'infinity'::date) AS hi,
+                           COALESCE(percentage, 0) AS pct
+                    FROM property_unit_ownerships
+                    WHERE property_unit_id = NEW.property_unit_id
+                      AND id <> OLD.id
+                      AND status = 'active'
+                      AND valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
+                      AND COALESCE(valid_until, 'infinity'::date) >= NEW.valid_from
+                    UNION ALL
+                    SELECT NEW.valid_from,
+                           COALESCE(NEW.valid_until, 'infinity'::date),
+                           COALESCE(NEW.percentage, 0)
+                ),
+                points AS (
+                    SELECT lo AS p FROM spans
+                    UNION
+                    SELECT hi FROM spans WHERE hi <> 'infinity'::date
+                )
+                SELECT COALESCE(MAX(total), 0) INTO peak
+                FROM (
+                    SELECT SUM(s.pct) AS total
+                    FROM spans s
+                    JOIN points pt ON pt.p >= s.lo AND pt.p <= s.hi
+                    GROUP BY pt.p
+                ) totals;
 
-                IF total + NEW.percentage > 100 THEN
+                IF peak > 100 THEN
                     RAISE EXCEPTION 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad % supera 100 por ciento', NEW.property_unit_id
                         USING ERRCODE = '23514';
                 END IF;
@@ -188,7 +236,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-
         DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_insert_trigger ON property_unit_ownerships');
         DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p04_update_trigger ON property_unit_ownerships');
         DB::statement('DROP TRIGGER IF EXISTS property_unit_ownerships_rn_p05_update_trigger ON property_unit_ownerships');

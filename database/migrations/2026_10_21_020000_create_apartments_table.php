@@ -95,7 +95,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-
         DB::statement('DROP TRIGGER IF EXISTS apartments_tec_s01_trigger ON apartments');
         DB::statement('DROP FUNCTION IF EXISTS apartments_enforce_apartment_unit_type()');
         DB::statement('DROP TRIGGER IF EXISTS property_units_apartment_type_guard ON property_units');
