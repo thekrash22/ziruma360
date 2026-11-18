@@ -27,6 +27,12 @@
 
 **S10.** Pruebas Pest: aislamiento multi-tenant (usuario A no accede a datos B), membresías activas/suspendidas, permisos de roles.
 
+**S11.** `property_units` completa (§3.5 del spec): `unit_type` (`apartment`, `private_parking`, `storage`, `commercial_unit`, `other`), unicidad `UNIQUE NULLS NOT DISTINCT (residential_complex_id, building_id, unit_type, number)` (PostgreSQL 15+, cubre `building_id` nulo), coherencia `building_floor_id` ↔ `building_id` por FK compuesta, `status` (`active`, `inactive`, `under_review`), desactivación en vez de borrado.
+
+**S12.** `apartments` (§3.6 del spec): extensión 1:1 de `property_units` (`property_unit_id` UNIQUE + FK compuesta con el conjunto), `apartment_type_id` nullable, `bedrooms`, `bathrooms`, `operational_status` (`occupied`, `vacant`, `under_works`, `inactive`), `short_term_rental_enabled` `false` por defecto, `features` JSONB. **TEC-S01:** la unidad base debe ser `unit_type = apartment`, garantizado a nivel BD.
+
+**S13.** Pruebas de `property_units` y `apartments`: unicidad con `building_id` nulo, FK compuesta piso↔edificio, apartamento solo sobre unidad tipo `apartment`, apartamento 1:1 y del mismo conjunto, aislamiento multi-tenant.
+
 ---
 
 ## Tasks
@@ -40,6 +46,7 @@
 | T5 | S10 | Commit 034e40e | Commit 034e40e |
 | T6 | modules | Commit 9c896e7 | Commit 9c896e7 |
 | T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
+| T8 | S11-S13 | Worker | Commits 6d66975 + 75f5085 |
 
 ---
 
@@ -49,7 +56,7 @@
 |---|---|---|---|
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
 | T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
-| T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | Alta |
+| T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commits 6d66975 + 75f5085) |
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
@@ -74,3 +81,41 @@
 **L5.** Tarea T6 completada: residential_complex_modules. Enum ComplexModule con 6 módulos, observer para seeding automático, 15 tests pasando (commit 9c896e7).
 
 **L6.** Tarea T7 completada: Estructura física. Building, BuildingFloor, ApartmentType con enums y BelongsToComplex. 20 tests pasando (commit 41c62ed).
+
+**L7.** CRUD de edificios conectado a la UI (commit 66400bc): BuildingController + páginas Vue Index/Create/Show/Edit, rutas en web.php y Sidebar con solo rutas funcionales. Ese commit arrastró sin querer el modelo `PropertyUnit` y su migración, que pertenecen a T8.
+
+**L8.** Tarea T8 completada (commit 6d66975). `property_units` con unicidad `UNIQUE NULLS NOT DISTINCT (residential_complex_id, building_id, unit_type, number)`, FK compuesta `(building_id, building_floor_id)` a `building_floors` y `apartments` como extensión 1:1 con FK compuesta al conjunto y trigger TEC-S01.
+
+Evidencia T8:
+- Suite completa en SQLite: 132 pasan, 1 skip, 365 assertions.
+- Archivos T8 contra PostgreSQL 18.3 real (BD scratch): 27 pasan.
+- Sondas SQL directas sobre la BD de desarrollo (Postgres 18.3) para el DDL que SQLite no cubre: unicidad con `building_id` nulo → viola la constraint; piso de otro edificio → viola la FK compuesta; apartamento sobre unidad `private_parking` → el trigger TEC-S01 aborta; segundo apartamento sobre la misma unidad → viola la unicidad 1:1; apartamento y unidad de conjuntos distintos → viola la FK compuesta.
+- La BD de desarrollo quedó migrada y sin datos de prueba.
+
+Desviaciones y decisiones tomadas en T8:
+1. `ON DELETE SET NULL` en la FK compuesta anulaba también `building_id` y dejaba la cascada de borrado de un edificio en estado inconsistente (violación del CHECK). Se cambió a `ON DELETE RESTRICT` tanto en la FK compuesta como en `property_units.building_id` → buildings: un edificio o un piso con unidades asociadas no se borra, se desactiva (RN-S02/RN-S04). Cubierto por 3 tests nuevos.
+2. Se descartó el bloque que reaplicaba constraints de S11 sobre esquemas legacy: la rama nunca se mergeó, así que la BD de desarrollo se realineó con `migrate:rollback --batch=5` + `migrate` y queda una sola fuente de verdad en las migraciones.
+3. `PropertyUnit::apartments()` (HasMany a una clase inexistente) se reemplaza por `apartment()` (HasOne), coherente con la extensión 1:1 del spec.
+
+Pendientes que surgieron de T8 (no incluidos en el alcance de T8):
+- `ResidentialComplexApiTest::test_returns_404_for_nonexistent_building` falla solo en PostgreSQL: la columna `uuid` es de tipo nativo y una cadena no-uuid produce 500 en vez de 404. Es previo a T8 (viene de T1/T7) y queda para un arreglo de validación de uuid.
+- El `BuildingController::destroy` borra el edificio sin más: con unidades asociadas ahora falla por FK. Falta el proceso controlado de desactivación previsto en RN-S02. (Corregido en L9: el controller ya desactivaba, no borraba.)
+
+**L9.** Verificación independiente de T8 (agente `gentle-ai-verify` sobre el rango 66400bc..HEAD): sin hallazgos bloqueantes. Verificó en PostgreSQL 18.3 real que existen y se aplican la constraint `UNIQUE NULLS NOT DISTINCT`, la FK compuesta piso↔edificio, el CHECK de coherencia, la FK de `apartments` con el conjunto, el `UNIQUE` 1:1 y el trigger TEC-S01, replicando además el esquema desde cero con las migraciones de la rama.
+
+Corrección de una premisa: el cambio de `ON DELETE SET NULL` a `RESTRICT` **no** rompe el CRUD de edificios. `BuildingController::destroy` ya desactivaba el edificio (`status = inactive`) y no borra; en el código de aplicación no existe ningún `DELETE` sobre `buildings` ni `building_floors`. Lo único que se rechaza es el borrado directo de un edificio o piso con unidades, que es exactamente RN-S02.
+
+Hallazgos no bloqueantes del verificador y su tratamiento:
+- N-B1 (el invariante TEC-S01 se podía romper cambiando el `unit_type` de una unidad que ya tenía apartamento): **corregido en T8** con un trigger sobre `property_units` (commit 75f5085), verificado con sondas SQL en PostgreSQL.
+- N-B2 (RN-S04 "desactivar, no borrar" sin garantía: no hay `SoftDeletes` ni restricción que impida borrar una unidad con historial): **deuda abierta**. Se implementa cuando existan las tablas de historial (T9, T12, T13).
+- Los tests asertan la clase de excepción (`QueryException`) y no la constraint concreta: una mutación que reemplazara la FK por un `NOT NULL` dejaría los tests en verde. Deuda de calidad menor.
+- El dominio de valores de `unit_type`, `status` y `operational_status` está garantizada por enum de PHP, no por `CHECK` en base de datos (los edificios sí tienen CHECK). Deuda de consistencia.
+
+Pendientes que surgieron de T8 (no incluidos en el alcance de T8):
+- `ResidentialComplexApiTest::test_returns_404_for_nonexistent_building` falla solo en PostgreSQL: la columna `uuid` es de tipo nativo y una cadena no-uuid produce 500 en vez de 404. Es previo a T8 (viene de T1/T7) y queda para un arreglo de validación de uuid.
+- El `BuildingController::destroy` ya desactiva en vez de borrar, pero no distingue el motivo para el usuario; falta el proceso controlado de desactivación previsto en RN-S02.
+
+## Delivery
+
+- Rama de feature: `feat/physical-structure`. Límite de slice registrado: 4.179 líneas en 9 commits desde `origin/main` (módulos 522, estructura física 992, UI de edificios 1.389, T8 1.092 + correcciones). Cada work unit supera el corte de ~400 líneas, así que la entrega debe ir en PRs encadenados/apilados (un PR por work unit: T6-T7, UI de edificios, T8) en lugar de un PR único. La creación de los PRs es decisión del usuario.
+
