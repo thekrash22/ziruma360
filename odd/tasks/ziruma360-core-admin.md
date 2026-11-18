@@ -53,7 +53,7 @@
 | T6 | modules | Commit 9c896e7 | Commit 9c896e7 |
 | T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
 | T8 | S11-S13 | Worker | Commits 6d66975 + 75f5085 |
-| T12 | S14-S16 | Worker (en curso, rama `feat/ownerships`) | — |
+| T12 | S14-S16 | Worker (rama `feat/ownerships`) | Commits `b0bcb09` + `bfb8446` + `11a6ace` + `7a5ef4d` + `5ea5650` |
 
 ---
 
@@ -67,7 +67,7 @@
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
-| T12 | `property_unit_ownerships` (titularidad con historial) | T8 | En curso (specs S14-S16: incluye `people`) |
+| T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta |
 | T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media |
@@ -132,8 +132,36 @@ Pendientes que surgieron de T8 (no incluidos en el alcance de T8):
 - RN-P01 (menores de edad vinculados a un adulto responsable) y SEG-P01 (exposición de datos por rol) quedan diferidos: el spec no define un campo para el adulto responsable y la exposición por rol es del API, no del dominio.
 - Garantías a nivel de base de datos para T12: FK compuestas que impiden mezclar conjuntos (ACE-C02), `UNIQUE` parcial de documento por conjunto, un índice único parcial de titularidad vigente por (unidad, persona, tipo), CHECK de porcentaje 0–100, CHECK de vigencia, y triggers para RN-P04 (suma de titularidades vigentes ≤ 100 %) y RN-P05 (la titularidad no se edita en sitio: se cierra y se crea otra).
 
+**L12.** Revisión nativa de T12 (lineage `review-e0a0385f4eac0b57`, tier medio, lentes `review-risk` y `review-reliability`, candidato `b0bcb09..11a6ace`, 12 archivos, 1.687 líneas) cerró en `correction_required` con dos hallazgos CRITICAL atribuidos al candidato:
+1. RN-P04 podía eludirse con escrituras concurrentes: el trigger sumaba sin tomar ningún bloqueo, así que dos transacciones insertando titularidades distintas de la misma unidad podían leer el mismo total previo y commitear una suma mayor a 100 %.
+2. RN-P05 no volvía inmutable el historial: al cerrar (o reactivar) un registro se podían reescribir en la misma actualización la persona, la unidad, el tipo, el porcentaje o `valid_from`.
+
+Corrección aplicada (una sola, dentro del presupuesto de 200 líneas de diff):
+- Los dos triggers de RN-P04 toman un bloqueo de fila sobre la unidad (`SELECT 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE`) antes de calcular la suma: las escrituras concurrentes de la misma unidad se serializan y la segunda ve el total ya confirmado. En SQLite no hace falta nada equivalente porque las escrituras ya están serializadas.
+- RN-P05 pasa a ser inmutabilidad de los campos que describen el hecho (unidad, persona, tipo, porcentaje y `valid_from`) en cualquier actualización; solo cambian `status`, `valid_until` y las anotaciones. Cerrar y reactivar siguen permitidos, pero sin reescribir los datos: para cambiar el titular hay que cerrar el vigente y crear otro.
+- Pruebas: la de reactivación se ajustó (reactiva sin tocar los datos y comprueba que RN-P04 se vuelve a evaluar) y se agregaron tres (RN-P04 al reactivar por encima de 100 %, RN-P05 al cambiar el titular al cerrar, RN-P05 al cambiar el porcentaje de un registro cerrado). Se añadió `PropertyUnitOwnershipConcurrencyTest` (solo PostgreSQL): comprueba que el trigger de RN-P04 deja bloqueada la fila de la unidad mientras dura la comprobación.
+- Verificación posterior a la corrección: suite SQLite 175 pasan + 2 skip; T12 completo contra PostgreSQL 18.3 real; sondas SQL sobre la BD de desarrollo que confirman la inmutabilidad (cerrar con cambio de titular rechazado, cambiar el porcentaje de un vigente o de un cerrado rechazado, cerrar y reactivar sin tocar los datos permitido).
+
+Deuda que quedó registrada durante T12 (no bloqueante, fuera del alcance del work unit):
+- RN-P04 se evalúa en el momento de la escritura: una titularidad que arranca en el futuro no cuenta en la suma de hoy, y el paso del tiempo no dispara ninguna reevaluación. Si mañana existieran titularidades vigentes cuya suma superara el 100 %, ninguna escritura lo detectaría. Mitigación pendiente: validación de vigencias (job programado o comprobación al leer) — se anota para el work unit de historial/transacciones.
+- Borrar un conjunto con historial de titularidad falla por la FK `RESTRICT` con un error de base de datos y no con un mensaje de negocio: coherente con RN-S04, pero falta el proceso controlado de desactivación.
+
+**L13.** Segunda ronda de la revisión nativa de T12 (lineage sucesor `review-f4a03f11445fdda4`, recoveries sobre el mismo work unit) volvió a cerrar en `correction_required` con dos hallazgos CRITICAL atribuidos al candidato, ambos sobre la corrección anterior:
+1. RN-P04 seguía siendo dependiente del orden de las titularidades: la suma solo miraba las titularidades vigentes en la fecha de inicio de la nueva, así que un periodo que empieza más tarde era invisible para una fila anterior y ambas podían quedar commitearadas con una suma mayor a 100 %.
+2. RN-P05 dejaba mutables los campos de auditoría: la identidad del registro (`uuid`), su conjunto y su evidencia (`document_reference`) se podían reescribir en sitio, porque el trigger solo comparaba los campos del hecho de la titularidad.
+
+Corrección aplicada (segunda acotada, 107 líneas de diff, dentro del presupuesto de 200):
+- RN-P04 suma ahora las titularidades vigentes **cuyo periodo se superpone** al de la nueva (`valid_from <= COALESCE(NEW.valid_until, 'infinity') AND COALESCE(puo.valid_until, 'infinity') >= NEW.valid_from`), no solo las vigentes en su fecha de inicio. El control deja de depender del orden de registro en los dos sentidos: una titularidad futura y una vigente que se cruzan se rechazan entre sí, se registre la que se registre primero.
+- RN-P05 vuelve inmutables también `residential_complex_id`, `uuid` y `document_reference` (además de unidad, persona, tipo, porcentaje y `valid_from`). Solo cambian `status`, `valid_until` y las anotaciones.
+- Pruebas nuevas: solapamiento registrado en orden inverso (titularidad futura primero, vigente después), solapamiento con la vigente registrada primero, y rechazo de cambiar `uuid` y `document_reference`.
+- Verificación posterior a la segunda corrección: suite SQLite **179 pasan + 2 skip** (434 assertions); archivos T12 contra PostgreSQL 18.3 real **46 tests pasan** (67 assertions), incluido el test de concurrencia; sondas SQL sobre la BD de desarrollo confirman que el 90 % de hoy se rechaza frente a una titularidad futura ya registrada, que una titularidad futura sin solapamiento se acepta, y que cambiar el `uuid` o la referencia documental se rechaza. La base scratch `z360_t12_check` se eliminó y la BD de desarrollo quedó migrada y sin datos de prueba.
+
+Con esta corrección queda cerrada la deuda de "RN-P04 se evalúa en el momento de la escritura" que se había anotado en L12: la suma se calcula sobre el periodo solapado, así que el invariante "en cada instante la suma de las titularidades vigentes no supera 100 %" queda garantizado por la propia base, sin depender de reevaluaciones periódicas. Lo que sigue pendiente es el proceso controlado de desactivación de un conjunto con historial (mensaje de negocio frente al error de FK `RESTRICT`).
+
+Disposición de la revisión nativa de T12: el lineage `review-f4a03f11445fdda4` queda abierto en estado `correction_required` con las dos correcciones aplicadas y verificadas, pero **el slot de captura del plan de corrección es inejecutable por un defecto del proveedor**: el binding que el propio proveedor emite (`review.capture-correction-plan`, request `sha256:1dddf6b3...`) es rechazado por la captura con `capture-binding-rejected / collectBinding is missing or stale for current STATUS`, en forma serializada y en forma estructurada, y la ruta de recuperación responde `native-recovery-status-mismatch` porque el estado ofrece `collect` y no `recover`. Ninguna de esas llamadas mutó el repositorio (`mutation_performed: false`) ni consumió autoridad. Un START nuevo también queda rechazado con `request-context-requires-fresh-review`, porque la autoridad existente conserva el contexto congelado de este work unit. Con lo cual T12 no depende de esa revisión para cerrarse: tiene verificación propia (suite SQLite + PostgreSQL real + sondas SQL) y verificación independiente en curso con `gentle-ai-verify` sobre el rango commiteado.
+
 ## Delivery
 
 - Rama de feature: `feat/physical-structure`. Límite de slice registrado: 4.179 líneas en 9 commits desde `origin/main` (módulos 522, estructura física 992, UI de edificios 1.389, T8 1.092 + correcciones). Cada work unit supera el corte de ~400 líneas, así que la entrega debe ir en PRs encadenados/apilados (un PR por work unit: T6-T7, UI de edificios, T8) en lugar de un PR único. La creación de los PRs es decisión del usuario.
-- T12 se desarrolla en la rama `feat/ownerships`, creada desde `b33c544` (fin de T8), para que su PR sea un slice propio sobre la base de `feat/physical-structure`.
+- T12 se desarrolla en la rama `feat/ownerships`, creada desde `b33c544` (fin de T8), para que su PR sea un slice propio sobre la base de `feat/physical-structure`. Límite de slice registrado para esta rama: 6.111 líneas en 15 commits desde `origin/main` (T12: 1.822 líneas de implementación + 191 + 107 de correcciones de revisión nativa, más el commit de alcance). La entrega sigue siendo PRs encadenados (un PR por work unit) y la creación de los PRs es decisión del usuario.
 

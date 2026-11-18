@@ -59,11 +59,14 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Prioridad: Media
 
 ## T12: people + property_unit_ownerships
-- Status: in_progress
+- Status: done
 - Specs: S14, S15, S16
 - Dependencias: T8
 - Rama: feat/ownerships
-- Commit: —
+- Commit: b0bcb09 (alcance) + bfb8446 (people) + 11a6ace (titularidades) + 7a5ef4d (corrección RN-P04 concurrente / RN-P05 inmutable) + 5ea5650 (corrección RN-P04 por solapamiento / RN-P05 campos de auditoría)
+- Verificación: SQLite 179 pasan + 2 skip (434 assertions); PostgreSQL 18.3 real 46 tests (67 assertions) sobre base temporal; sondas SQL sobre la BD de desarrollo; base scratch eliminada y BD de desarrollo migrada sin datos de prueba
+- Revisión nativa: lineage `review-e0a0385f4eac0b57` y sucesor `review-f4a03f11445fdda4`, dos rondas de hallazgos CRITICAL (carrera de RN-P04, inmutabilidad de RN-P05, dependencia temporal de RN-P04, campos de auditoría mutables) corregidas y verificadas; el slot de captura del plan de corrección quedó inejecutable por un defecto del proveedor (`capture-binding-rejected / stale`), con `mutation_performed: false` y sin mutar el repositorio. Lineage abierto para inspección del mantenedor.
+- Deuda abierta: proceso controlado de desactivación de un conjunto con historial (la FK `RESTRICT` responde con error de base de datos, no con mensaje de negocio)
 
 ## T13: unit_leases + unit_occupancies
 - Status: pending
