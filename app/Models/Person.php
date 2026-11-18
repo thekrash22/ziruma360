@@ -107,6 +107,14 @@ class Person extends Model
     }
 
     /**
+     * Autorizaciones de gestion de la persona (spec §4.8).
+     */
+    public function authorizations(): HasMany
+    {
+        return $this->hasMany(PropertyUnitAuthorization::class);
+    }
+
+    /**
      * Scope: personas con un documento concreto (tipo + número).
      *
      * RN-P02: antes de crear una persona se busca por documento; si existe
