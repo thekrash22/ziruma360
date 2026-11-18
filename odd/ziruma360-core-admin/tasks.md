@@ -72,9 +72,12 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Deuda abierta: proceso controlado de desactivación de un conjunto con historial (la FK `RESTRICT` responde con error de base de datos, no con mensaje de negocio); eficacia del bloqueo de RN-P04 bajo `REPEATABLE READ`/`SERIALIZABLE`; `notes` mutable y fuera del spec; RN-P01 y SEG-P01 diferidas
 
 ## T13: unit_leases + unit_occupancies
-- Status: pending
+- Status: in_progress
+- Specs: S17, S18, S19
 - Dependencias: T12
 - Prioridad: Alta
+- Rama: feat/leases
+- Nota: dominio puro (sin rutas web ni API), como T8 y T12. RN-P07 (un contacto principal vigente por unidad), RN-P08 (un propietario no es automáticamente residente), RN-P09 (crear un arrendamiento crea o vincula la ocupación `tenant_resident` del arrendatario), RN-P10 (terminar el arrendamiento cierra la ocupación y revoca las delegaciones asociadas). Diferidos con registro: la revocación de las autorizaciones dependientes (requiere `property_unit_authorizations`, T15), la política de aprobación del arrendamiento (propuesta abierta del spec §4.5) y el vocabulario cerrado de `delegated_permissions` (el spec no lo define: se valida la forma, objeto JSON con valores booleanos).
 
 ## T14: employments (empleados: conjunto + unidad)
 - Status: pending

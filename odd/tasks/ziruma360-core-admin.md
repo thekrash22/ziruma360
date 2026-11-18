@@ -39,6 +39,12 @@
 
 **S16.** Pruebas de `people` y `property_unit_ownerships`: unicidad parcial de documento por conjunto, aislamiento multi-tenant, FK compuesta de mismo conjunto, RN-P04, RN-P05 y unicidad de la titularidad vigente por unidad, persona y tipo.
 
+**S17.** `unit_leases` (§4.5 del spec): `property_unit_id`, `tenant_person_id`, `landlord_person_id` nullable (titular que arrienda), `starts_on`, `ends_on`, `status` (`active`, `ended`, `terminated`), `document_reference` (contrato, si el conjunto lo exige) y `delegated_permissions` (JSONB validado: qué puede hacer el arrendatario, ej. gestionar empleados, invitar visitantes). Garantías a nivel de base de datos: unidad, arrendatario y arrendador del mismo conjunto (FK compuesta, ACE-C02), `CHECK` de vigencia (`ends_on >= starts_on`), `CHECK` de dominio de `status`, y `delegated_permissions` como objeto JSON con valores booleanos.
+
+**S18.** `unit_occupancies` (§4.4 del spec): `property_unit_id`, `person_id`, `occupancy_type` (`owner_resident`, `tenant_resident`, `family_member`, `other_resident`), `is_primary_contact` (un contacto principal por unidad vigente), `lease_id` nullable (si viene de un arrendamiento), `valid_from`, `valid_until`, `status`. Garantías a nivel de base de datos: RN-P07 (`UNIQUE` parcial: un solo contacto principal vigente por unidad), RN-P08 (un propietario no es automáticamente residente: la ocupación se registra aparte), RN-P09 (al crearse un arrendamiento se crea o vincula la ocupación `tenant_resident` del arrendatario) y RN-P10 (al terminar el arrendamiento se cierran la ocupación y las delegaciones asociadas).
+
+**S19.** Pruebas de `unit_leases` y `unit_occupancies`: creación de la ocupación `tenant_resident` al crear un arrendamiento, cierre de la ocupación y revocación de las delegaciones al terminarlo, `UNIQUE` parcial del contacto principal vigente, no creación automática de ocupación por una titularidad, validación del vínculo entre ocupación y arrendamiento (tipo `tenant_resident`, mismo arrendatario y misma unidad), `CHECK` de vigencia y de dominios, y aislamiento multi-tenant de unidad, personas y arrendamientos.
+
 ---
 
 ## Tasks
@@ -54,6 +60,7 @@
 | T7 | Estructura física | Commit 41c62ed | Commit 41c62ed |
 | T8 | S11-S13 | Worker | Commits 6d66975 + 75f5085 |
 | T12 | S14-S16 | Worker (rama `feat/ownerships`) | Commits `b0bcb09` + `bfb8446` + `11a6ace` + `7a5ef4d` + `5ea5650` |
+| T13 | S17-S19 | Inline (rama `feat/leases`) | Pendiente |
 
 ---
 
@@ -68,7 +75,7 @@
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
-| T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta |
+| T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | 🔄 En curso (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta |
 | T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media |
 | T16 | Tests Pest para nueva estructura física y relaciones | T7-T15 | Alta |
@@ -191,8 +198,12 @@ Ademas, los intentos rechazados en admision dejaron ver tres hallazgos mas que t
 
 *Deuda abierta de T12:* F4 (nivel de aislamiento del bloqueo de RN-P04), F8 (`notes` mutable y fuera del spec), proceso controlado de desactivacion de un conjunto con historial (la FK `RESTRICT` responde con error de base de datos y no con mensaje de negocio), RN-P01 y SEG-P01 diferidas, y la revision nativa sin cerrar por el hallazgo de SQLite descrito arriba.
 
+**L15.** Arranca T13 en la rama `feat/leases`, creada desde `stg` (que ya integra T8 y T12). Alcance tomado del spec: §4.4 `unit_occupancies` y §4.5 `unit_leases`, con las reglas RN-P07 (un contacto principal vigente por unidad), RN-P08 (un propietario no es automáticamente residente), RN-P09 (crear un arrendamiento crea o vincula la ocupación `tenant_resident`) y RN-P10 (terminar un arrendamiento cierra la ocupación y las delegaciones asociadas). Decisiones: (a) el spec no enumera los valores de `status` de la ocupación, así que se adoptan `active`/`closed` por consistencia con las titularidades (§4.3); (b) `delegated_permissions` se valida solo en forma (objeto JSON con valores booleanos) porque el spec no define un vocabulario cerrado de permisos; (c) la "[Propuesta] Política del conjunto: ¿el arrendamiento requiere aprobación administrativa o solo notificación?" queda diferida porque el schema del spec no tiene campo de aprobación; (d) la parte de RN-P10 que revoca "las autorizaciones dependientes" se difiere a T15, porque `property_unit_authorizations` todavía no existe; (e) T13 es dominio puro, sin rutas web ni API, igual que T8 y T12. La rama se crea desde `stg` y no se pushea sin autorización del usuario.
+
 ## Delivery
 
 - Rama de feature: `feat/physical-structure`. Límite de slice registrado: 4.179 líneas en 9 commits desde `origin/main` (módulos 522, estructura física 992, UI de edificios 1.389, T8 1.092 + correcciones). Cada work unit supera el corte de ~400 líneas, así que la entrega debe ir en PRs encadenados/apilados (un PR por work unit: T6-T7, UI de edificios, T8) en lugar de un PR único. La creación de los PRs es decisión del usuario.
 - T12 se desarrolla en la rama `feat/ownerships`, creada desde `b33c544` (fin de T8), para que su PR sea un slice propio sobre la base de `feat/physical-structure`. Límite de slice registrado para esta rama: 6.195 líneas en 21 commits desde `origin/main` (T12: 1.822 líneas de implementación + 191 + 107 de correcciones de revisión nativa + la tanda PostgreSQL-only y el cierre de hallazgos, más el commit de alcance). La entrega sigue siendo PRs encadenados (un PR por work unit) y la creación de los PRs es decisión del usuario.
+- T12 fue mergeado a `stg` por el usuario mediante la cadena de PRs #4 (T8), #5 (T12) y #6 (`feat/physical-structure` -> `stg`): `stg` quedó en `f434cf8` con 22 commits desde `origin/main` (+3.505/-52) y su árbol es idéntico al de `feat/ownerships` (`d61ffd0`). La validación del merge comprobó integridad del árbol, ancestros, ausencia de marcadores de conflicto, suite completa en verde (186 pasan) y migración desde cero sobre una base limpia con las 12 migraciones aplicadas y las garantías de RN-P04/RN-P05 presentes.
+- T13 se desarrolla en la rama `feat/leases`, creada desde `stg`, para conservar el patrón de un slice por work unit y que su PR apunte a `stg` (o a `main` si `stg` ya se integró). Límite de slice a registrar al cerrar. El push y la apertura del PR quedan como decisión del usuario.
 
