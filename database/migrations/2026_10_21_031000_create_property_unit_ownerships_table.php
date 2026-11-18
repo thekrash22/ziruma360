@@ -104,8 +104,8 @@ return new class extends Migration
         SQL);
 
         // RN-P04 (INSERT): la suma de los porcentajes de las titularidades
-        // vigentes de la misma unidad (a la fecha NEW.valid_from) más el
-        // porcentaje nuevo no puede superar 100.
+        // vigentes de la misma unidad cuyo periodo se superpone al de la
+        // nueva, mas el porcentaje nuevo, no puede superar 100.
         DB::statement(<<<'SQL'
             CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p04_insert() RETURNS trigger
             LANGUAGE plpgsql AS $$
@@ -121,12 +121,15 @@ return new class extends Migration
                 -- mismo total previo y commitear una suma mayor a 100.
                 PERFORM 1 FROM property_units WHERE id = NEW.property_unit_id FOR UPDATE;
 
+                -- Se suman las titularidades vigentes cuyo periodo se superpone
+                -- al de la nueva, no solo las vigentes en su fecha de inicio:
+                -- asi el control no depende del orden en que se registren.
                 SELECT COALESCE(SUM(COALESCE(puo.percentage, 0)), 0) INTO total
                 FROM property_unit_ownerships puo
                 WHERE puo.property_unit_id = NEW.property_unit_id
                   AND puo.status = 'active'
-                  AND puo.valid_from <= NEW.valid_from
-                  AND (puo.valid_until IS NULL OR puo.valid_until >= NEW.valid_from);
+                  AND puo.valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
+                  AND COALESCE(puo.valid_until, 'infinity'::date) >= NEW.valid_from;
 
                 IF total + NEW.percentage > 100 THEN
                     RAISE EXCEPTION 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad % supera 100 por ciento', NEW.property_unit_id
@@ -164,8 +167,8 @@ return new class extends Migration
                 WHERE puo.property_unit_id = NEW.property_unit_id
                   AND puo.id <> OLD.id
                   AND puo.status = 'active'
-                  AND puo.valid_from <= NEW.valid_from
-                  AND (puo.valid_until IS NULL OR puo.valid_until >= NEW.valid_from);
+                  AND puo.valid_from <= COALESCE(NEW.valid_until, 'infinity'::date)
+                  AND COALESCE(puo.valid_until, 'infinity'::date) >= NEW.valid_from;
 
                 IF total + NEW.percentage > 100 THEN
                     RAISE EXCEPTION 'RN-P04: la suma de los porcentajes de las titularidades vigentes de la unidad % supera 100 por ciento', NEW.property_unit_id
@@ -193,11 +196,14 @@ return new class extends Migration
             CREATE OR REPLACE FUNCTION property_unit_ownerships_rn_p05_update() RETURNS trigger
             LANGUAGE plpgsql AS $$
             BEGIN
-                IF NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
+                IF NEW.residential_complex_id IS DISTINCT FROM OLD.residential_complex_id
+                   OR NEW.uuid IS DISTINCT FROM OLD.uuid
+                   OR NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
                    OR NEW.person_id IS DISTINCT FROM OLD.person_id
                    OR NEW.ownership_type IS DISTINCT FROM OLD.ownership_type
                    OR NEW.percentage IS DISTINCT FROM OLD.percentage
-                   OR NEW.valid_from IS DISTINCT FROM OLD.valid_from THEN
+                   OR NEW.valid_from IS DISTINCT FROM OLD.valid_from
+                   OR NEW.document_reference IS DISTINCT FROM OLD.document_reference THEN
                     RAISE EXCEPTION 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo'
                         USING ERRCODE = '23514';
                 END IF;
@@ -270,8 +276,8 @@ return new class extends Migration
                     FROM property_unit_ownerships puo
                     WHERE puo.property_unit_id = NEW.property_unit_id
                       AND puo.status = 'active'
-                      AND puo.valid_from <= NEW.valid_from
-                      AND (puo.valid_until IS NULL OR puo.valid_until >= NEW.valid_from)
+                      AND puo.valid_from <= COALESCE(NEW.valid_until, '9999-12-31')
+                      AND COALESCE(puo.valid_until, '9999-12-31') >= NEW.valid_from
                   ) + NEW.percentage > 100;
             END
         SQL);
@@ -290,8 +296,8 @@ return new class extends Migration
                     WHERE puo.property_unit_id = NEW.property_unit_id
                       AND puo.id <> OLD.id
                       AND puo.status = 'active'
-                      AND puo.valid_from <= NEW.valid_from
-                      AND (puo.valid_until IS NULL OR puo.valid_until >= NEW.valid_from)
+                      AND puo.valid_from <= COALESCE(NEW.valid_until, '9999-12-31')
+                      AND COALESCE(puo.valid_until, '9999-12-31') >= NEW.valid_from
                   ) + NEW.percentage > 100;
             END
         SQL);
@@ -305,11 +311,14 @@ return new class extends Migration
             BEFORE UPDATE ON property_unit_ownerships
             BEGIN
                 SELECT RAISE(ABORT, 'RN-P05: el registro de titularidad es inmutable: cierre el vigente y cree uno nuevo')
-                WHERE NEW.property_unit_id IS NOT OLD.property_unit_id
+                WHERE NEW.residential_complex_id IS NOT OLD.residential_complex_id
+                   OR NEW.uuid IS NOT OLD.uuid
+                   OR NEW.property_unit_id IS NOT OLD.property_unit_id
                    OR NEW.person_id IS NOT OLD.person_id
                    OR NEW.ownership_type IS NOT OLD.ownership_type
                    OR NEW.percentage IS NOT OLD.percentage
-                   OR NEW.valid_from IS NOT OLD.valid_from;
+                   OR NEW.valid_from IS NOT OLD.valid_from
+                   OR NEW.document_reference IS NOT OLD.document_reference;
             END
         SQL);
     }

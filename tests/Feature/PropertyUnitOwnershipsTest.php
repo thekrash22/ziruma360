@@ -11,6 +11,7 @@ use App\Models\PropertyUnitOwnership;
 use App\Models\ResidentialComplex;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PropertyUnitOwnershipsTest extends TestCase
@@ -376,7 +377,7 @@ class PropertyUnitOwnershipsTest extends TestCase
         ]);
     }
 
-    public function test_rn_p05_rejects_changing_the_percentage_of_a_closed_ownership(): void
+    public function test_rn_p04_rejects_changing_the_percentage_of_a_closed_ownership(): void
     {
         $ownership = PropertyUnitOwnership::factory()->for($this->complex)->create([
             'status' => OwnershipStatus::CLOSED,
@@ -386,6 +387,73 @@ class PropertyUnitOwnershipsTest extends TestCase
         $this->expectException(QueryException::class);
 
         $ownership->update(['percentage' => 20]);
+    }
+
+    public function test_rn_p04_does_not_depend_on_the_order_of_the_periods(): void
+    {
+        $unit = $this->unit();
+
+        // La titularidad que empieza mas tarde se registra primero.
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 60,
+            'valid_from' => now()->addMonth()->toDateString(),
+        ]);
+
+        // La que empieza hoy se superpone con la anterior: 60 + 60 = 120.
+        $this->expectException(QueryException::class);
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 60,
+        ]);
+    }
+
+    public function test_rn_p04_rejects_overlapping_periods_registered_in_the_other_order(): void
+    {
+        $unit = $this->unit();
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 60,
+        ]);
+
+        // La que empieza mas tarde se superpone con la vigente: 60 + 50 = 110.
+        $this->expectException(QueryException::class);
+
+        PropertyUnitOwnership::factory()->create([
+            'residential_complex_id' => $this->complex->id,
+            'property_unit_id' => $unit->id,
+            'person_id' => $this->person()->id,
+            'percentage' => 50,
+            'valid_from' => now()->addMonth()->toDateString(),
+        ]);
+    }
+
+    public function test_rn_p05_rejects_changing_the_uuid_of_an_ownership(): void
+    {
+        $ownership = PropertyUnitOwnership::factory()->for($this->complex)->create();
+
+        $this->expectException(QueryException::class);
+
+        $ownership->update(['uuid' => (string) Str::uuid()]);
+    }
+
+    public function test_rn_p05_rejects_changing_the_document_reference_of_an_ownership(): void
+    {
+        $ownership = PropertyUnitOwnership::factory()->for($this->complex)->create([
+            'document_reference' => 'ESCRITURA-1',
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $ownership->update(['document_reference' => 'ESCRITURA-2']);
     }
 
     // ==================== RN-P05: la titularidad no se edita en sitio ====================
