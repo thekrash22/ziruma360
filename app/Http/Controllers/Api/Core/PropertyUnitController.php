@@ -3,16 +3,23 @@
 namespace App\Http\Controllers\Api\Core;
 
 use App\Enums\ComplexPermission;
+use App\Enums\PropertyUnitStatus;
+use App\Http\Requests\Core\StorePropertyUnitRequest;
 use App\Http\Requests\Core\UpdatePropertyUnitRequest;
 use App\Http\Resources\PropertyUnitResource;
 use App\Models\PropertyUnit;
 use App\Services\PermissionService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 
 /**
  * Unidades del conjunto (spec §3.5, §6 "Alcance").
+ *
+ * Esta controlador sirve tanto a la superficie `/api/v1/core/*` como al
+ * alias legacy `/api/v1/units` (S39): los paths y los nombres de ruta se
+ * conservan y solo cambia el dominio que atendian.
  */
 class PropertyUnitController extends CoreController
 {
@@ -53,12 +60,29 @@ class PropertyUnitController extends CoreController
 
     public function show(Request $request): PropertyUnitResource
     {
-        /** @var PropertyUnit $unit */
-        $unit = $request->attributes->get('property_unit');
+        $unit = UpdatePropertyUnitRequest::resolveUnit($request);
 
         abort_unless(Gate::allows('view', $unit), 403, 'No tienes permiso para consultar esta unidad.');
 
-        return new PropertyUnitResource($unit);
+        return new PropertyUnitResource($this->withRelations($unit));
+    }
+
+    /**
+     * Alta de unidad en el conjunto activo (S39).
+     *
+     * El conjunto lo decide el servidor: nunca se toma del cuerpo de la
+     * peticion ni de un encabezado del cliente (S9).
+     */
+    public function store(StorePropertyUnitRequest $request): JsonResponse
+    {
+        $unit = new PropertyUnit();
+        $unit->fill($request->validated());
+        $unit->residential_complex_id = $this->complexId($request);
+        $unit->save();
+
+        return (new PropertyUnitResource($this->withRelations($unit)))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function update(UpdatePropertyUnitRequest $request): PropertyUnitResource
@@ -77,7 +101,34 @@ class PropertyUnitController extends CoreController
 
         $unit->fill($payload)->save();
 
-        return new PropertyUnitResource($unit->refresh());
+        return new PropertyUnitResource($this->withRelations($unit->refresh()));
+    }
+
+    /**
+     * Baja de unidad (S39).
+     *
+     * RN-S04/RN-S02: en el dominio nuevo la baja es una DESACTIVACION, no
+     * un borrado. La unidad pasa a `status = inactive` y la fila (con su
+     * historial de titularidad, ocupaciones y arrendamientos) se conserva.
+     */
+    public function destroy(Request $request): JsonResponse
+    {
+        $unit = UpdatePropertyUnitRequest::resolveUnit($request);
+
+        abort_unless(
+            PermissionService::has(
+                $request->user(),
+                ComplexPermission::UNIT_DELETE,
+                $this->complexId($request)
+            ),
+            403,
+            'No tienes permiso para desactivar las unidades del conjunto.'
+        );
+
+        $unit->status = PropertyUnitStatus::INACTIVE;
+        $unit->save();
+
+        return (new PropertyUnitResource($this->withRelations($unit->refresh())))->response();
     }
 
     /**
@@ -99,5 +150,13 @@ class PropertyUnitController extends CoreController
     protected function perPage(Request $request): int
     {
         return min(max((int) $request->input('per_page', 25), 1), 100);
+    }
+
+    /**
+     * Carga las relaciones que expone el recurso (edificio y piso).
+     */
+    protected function withRelations(PropertyUnit $unit): PropertyUnit
+    {
+        return $unit->loadMissing(['building', 'buildingFloor']);
     }
 }
