@@ -77,10 +77,17 @@ class ComplexContext
      */
     public static function resolveFromRequest($request): ?int
     {
-        // 1. Check for explicit header (for API access)
+        // 1. Check for explicit header (for API access). The header is a
+        //    request from the client, so it is only honored when the user has
+        //    an active membership in that complex (S9: the active complex is
+        //    resolved on the server, never trusting an ID sent by the client).
         $headerComplexId = $request->header('X-Residential-Complex-Id');
-        if ($headerComplexId !== null) {
-            return (int) $headerComplexId;
+        if ($headerComplexId !== null && $request->user() !== null) {
+            $complexId = (int) $headerComplexId;
+
+            if ($complexId > 0 && $request->user()->isMemberOf($complexId)) {
+                return $complexId;
+            }
         }
 
         // 2. Check session
