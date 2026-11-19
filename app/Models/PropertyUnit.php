@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Enums\OccupancyStatus;
+use App\Enums\OwnershipStatus;
 use App\Enums\PropertyUnitStatus;
 use App\Enums\PropertyUnitType;
 use App\Models\Concerns\BelongsToComplex;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class PropertyUnit extends Model
@@ -127,6 +131,51 @@ class PropertyUnit extends Model
     public function scopeActive($query)
     {
         return $query->where('status', PropertyUnitStatus::ACTIVE->value);
+    }
+
+    /**
+     * Las unidades que le alcanzan a un actor (spec §6 "Alcance").
+     *
+     * El alcance no se deduce del permiso: una unidad le alcanza al actor
+     * cuando tiene una titularidad vigente (§4.3), una ocupacion vigente
+     * (§4.4) o una autorizacion vigente (§4.8, RN-P15) sobre ella.
+     *
+     * @param  Builder<PropertyUnit>  $query
+     * @return Builder<PropertyUnit>
+     */
+    public function scopeForActor(Builder $query, User $user, int $complexId): Builder
+    {
+        // La titularidad y la ocupacion se guardan por dia de calendario
+        // (columnas `date`), asi que su vigencia se compara por dia y no por
+        // instante: el ultimo dia de una titularidad vigente sigue
+        // contando. Las autorizaciones, en cambio, guardan instantes y las
+        // resuelve su propio scope `effective` (RN-P15).
+        $today = Carbon::today();
+
+        return $query->forComplex($complexId)->where(function (Builder $units) use ($user, $complexId, $today) {
+            $units->whereHas('ownerships', function (Builder $ownership) use ($user, $complexId, $today) {
+                $ownership->where('residential_complex_id', $complexId)
+                    ->where('status', OwnershipStatus::ACTIVE->value)
+                    ->where('valid_from', '<=', $today)
+                    ->where(fn (Builder $query) => $query->whereNull('valid_until')
+                        ->orWhere('valid_until', '>=', $today))
+                    ->whereHas('person', fn (Builder $person) => $person->where('user_id', $user->id));
+            })->orWhereHas('occupancies', function (Builder $occupancy) use ($user, $complexId, $today) {
+                $occupancy->where('residential_complex_id', $complexId)
+                    ->where('status', OccupancyStatus::ACTIVE->value)
+                    ->where('valid_from', '<=', $today)
+                    ->where(fn (Builder $query) => $query->whereNull('valid_until')
+                        ->orWhere('valid_until', '>=', $today))
+                    ->whereHas('person', fn (Builder $person) => $person->where('user_id', $user->id));
+            })->orWhereHas('authorizations', function (Builder $authorization) use ($user, $complexId) {
+                $authorization->where('residential_complex_id', $complexId)
+                    ->effective()
+                    ->where(function (Builder $query) use ($user) {
+                        $query->where('user_id', $user->id)
+                            ->orWhereHas('person', fn (Builder $person) => $person->where('user_id', $user->id));
+                    });
+            });
+        });
     }
 
     /**

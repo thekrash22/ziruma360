@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\OwnershipStatus;
 use App\Enums\OwnershipType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,7 +20,9 @@ use Illuminate\Support\Str;
  */
 class PropertyUnitOwnership extends Model
 {
-    use HasFactory, BelongsToComplex;
+    // La titularidad se audita: RN-C04 y el caso de §6 "Cambio de titularidad
+    // genera historial y auditoría".
+    use Auditable, HasFactory, BelongsToComplex;
 
     protected $fillable = [
         'uuid',
