@@ -35,6 +35,7 @@ enum ComplexPermission: string
     // People management
     case PERSON_VIEW = 'person.view';
     case PERSON_VIEW_MINIMAL = 'person.view_minimal'; // Portería
+    case PERSON_VIEW_DOCUMENT = 'person.view_document'; // Ver el documento sin enmascarar (SEG-P01)
     case PERSON_CREATE = 'person.create';
     case PERSON_EDIT = 'person.edit';
     case PERSON_DELETE = 'person.delete';
@@ -86,6 +87,7 @@ enum ComplexPermission: string
             self::UNIT_MANAGE => 'Gestionar sus unidades',
             self::PERSON_VIEW => 'Ver personas',
             self::PERSON_VIEW_MINIMAL => 'Ver datos mínimos de personas',
+            self::PERSON_VIEW_DOCUMENT => 'Ver el documento de identidad sin enmascarar',
             self::PERSON_CREATE => 'Crear personas',
             self::PERSON_EDIT => 'Editar personas',
             self::PERSON_DELETE => 'Eliminar personas',
@@ -116,7 +118,7 @@ enum ComplexPermission: string
             self::BUILDING_VIEW, self::BUILDING_CREATE, self::BUILDING_EDIT, self::BUILDING_DELETE,
             self::FLOOR_VIEW, self::FLOOR_CREATE, self::FLOOR_EDIT, self::FLOOR_DELETE,
             self::UNIT_VIEW, self::UNIT_CREATE, self::UNIT_EDIT, self::UNIT_DELETE, self::UNIT_MANAGE => 'Estructura física',
-            self::PERSON_VIEW, self::PERSON_VIEW_MINIMAL, self::PERSON_CREATE,
+            self::PERSON_VIEW, self::PERSON_VIEW_MINIMAL, self::PERSON_VIEW_DOCUMENT, self::PERSON_CREATE,
             self::PERSON_EDIT, self::PERSON_DELETE => 'Personas',
             self::OWNERSHIP_VIEW, self::OWNERSHIP_MANAGE,
             self::OCCUPANCY_VIEW, self::OCCUPANCY_MANAGE => 'Titularidad y ocupación',
