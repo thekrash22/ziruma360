@@ -106,6 +106,14 @@ class PropertyUnit extends Model
     }
 
     /**
+     * Empleos de la unidad como empleador (spec §4.6).
+     */
+    public function employments(): HasMany
+    {
+        return $this->hasMany(Employment::class, 'employer_property_unit_id');
+    }
+
+    /**
      * Scope: active units
      */
     public function scopeActive($query)

@@ -85,9 +85,19 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Diferidos con registro: la revocación de las autorizaciones dependientes (T15), la política de aprobación del arrendamiento (propuesta abierta del spec §4.5) y el vocabulario cerrado de `delegated_permissions` (el spec no lo define: se valida la forma, objeto JSON con valores booleanos)
 
 ## T14: employments (empleados: conjunto + unidad)
-- Status: pending
+- Status: done
+- Specs: S20, S21, S22, S23, S24
 - Dependencias: T12
 - Prioridad: Alta
+- Rama: feat/employments (desde `feat/leases`)
+- Commit: 1419752 (alcance) + 9da83c4 (tabla con la garantía de RN-P11) + c5d05cb (modelo, enums y factory) + 4768f4e (relaciones en `Person` y `PropertyUnit`) + 2d82600 (pruebas) + f488983 (corrección del employment activo único) + 3fe69b1 (prueba de concurrencia versionada)
+- Alcance: `person_id`, `employer_property_unit_id` nullable, `employment_type` (`complex_staff`, `unit_domestic`, `contractor`), `position`, `schedule` (JSONB validado), `valid_from`, `valid_until`, `status`, `access_authorized`; FK compuestas `RESTRICT` a `people` y `property_units`, CHECK de vigencia, de dominios, de `schedule` y de coherencia tipo↔empleador, RN-P11 en la base (acceso exige cuenta y membresía activa) y no duplicación de empleo activo equivalente
+- Verificación: suite completa en PostgreSQL 18.3 real **240 pasan, 0 skip, 558 assertions** (217 previos + 22 de T14 + 1 de concurrencia); sonda por SQL crudo que confirma el alta válida y el rechazo en la base de RN-P11, de la coherencia tipo-empleador, del `schedule` no objeto y del empleo activo duplicado; catálogo de 2 triggers y 18 constraints; base de desarrollo migrada y `z360_test` sin residuos
+- Slice: 997 líneas en 10 archivos y 5 commits sobre `feat/leases`; entrega en PR propio con `size:exception` (dos unidades cohesivas superan el corte de ~400 líneas). Acumulado contra `origin/main`: **6.867 líneas en 40 commits**, que no es un slice entregable: la entrega sigue siendo un PR por work unit, encadenados y apilados
+- Revisión nativa: **aprobada** en la autoridad `review-3f3e465105c557fd` (tier medio, lente `review-risk`). La ronda correctiva detectó el CRITICAL real `R1-concurrent-active-employment-bypass` (el control de un solo empleo activo no serializaba las altas concurrentes), corregido en `f488983` con `FOR UPDATE` sobre la persona más el índice único parcial `employments_single_active_unique`; la prueba de concurrencia se verificó en rojo contra el código previo y en verde con el fix, y quedó versionada en `tests/Feature/EmploymentConcurrencyTest.php`. El validador dirigido cerró el lineage en `approved` y el reconocimiento exacto quemó la autoridad (`gentle-ai.review-acknowledged/v1`)
+- Segunda revisión nativa (la que exige el gate de pre-delivery de RDD): **aprobada** en la autoridad `review-12d4ad064f262eed` (tier alto, lentes `review-risk` y `review-resilience`, 2 corridas de modelo). Sin hallazgos bloqueantes; un único hallazgo informativo `R4-access-authorization-stale-after-membership-revocation` (WARNING): RN-P11 solo se evalúa al insertar o actualizar el empleo, así que una suspensión posterior de la membresía deja `access_authorized` obsoleto. Queda como deuda para cuando exista el control de revocación de membresías. Autoridad quemada con `gentle-ai.review-acknowledged/v1`
+- Push: `origin/feat/employments` en `84c7a2e` (autorizado por el usuario); el PR sigue siendo manual por falta de `gh`/`hub`/`glab`/token: `https://github.com/thekrash22/ziruma360/pull/new/feat/employments`
+- Diferidos con registro: RN-P12 (política del conjunto para el acceso recurrente del empleado doméstico: no existe la tabla de políticas), el vocabulario de `schedule` (el spec solo pide "JSONB validado") y la asignación del rol dentro de la membresía, que se valida en la aplicación
 
 ## T15: property_unit_authorizations
 - Status: pending
