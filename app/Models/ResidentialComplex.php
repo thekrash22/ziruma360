@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ComplexModule;
 use App\Enums\ResidentialComplexStatus;
 use App\Models\Concerns\Auditable;
+use App\Settings\ComplexSettingsCatalog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -45,6 +46,23 @@ class ResidentialComplex extends Model
                 $complex->uuid = (string) Str::uuid();
             }
         });
+    }
+
+    /**
+     * Las políticas del conjunto no son JSON libre (spec §1.4): se validan
+     * contra el catálogo antes de persistirse.
+     *
+     * @param  mixed  $value
+     */
+    public function setSettingsAttribute($value): void
+    {
+        $settings = is_array($value)
+            ? $value
+            : (json_decode((string) $value, true) ?: []);
+
+        ComplexSettingsCatalog::validate($settings);
+
+        $this->attributes['settings'] = json_encode($settings, JSON_UNESCAPED_UNICODE);
     }
 
     /**
