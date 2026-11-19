@@ -14,6 +14,12 @@ class Unidad extends Model
 {
     use HasFactory;
 
+    /**
+     * El plural derivado por Eloquent ("unidads") no coincide con la tabla
+     * migrada ("unidades"). El legacy sigue activo hasta T17.
+     */
+    protected $table = 'unidades';
+
     protected $fillable = [
         'uuid',
         'residential_complex_id',
