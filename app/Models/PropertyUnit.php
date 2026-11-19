@@ -90,6 +90,22 @@ class PropertyUnit extends Model
     }
 
     /**
+     * Arrendamientos de la unidad (spec §4.5).
+     */
+    public function leases(): HasMany
+    {
+        return $this->hasMany(UnitLease::class);
+    }
+
+    /**
+     * Ocupaciones de la unidad (spec §4.4).
+     */
+    public function occupancies(): HasMany
+    {
+        return $this->hasMany(UnitOccupancy::class);
+    }
+
+    /**
      * Scope: active units
      */
     public function scopeActive($query)
