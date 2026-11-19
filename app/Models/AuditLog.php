@@ -2,10 +2,22 @@
 
 namespace App\Models;
 
+use App\Services\ComplexContext;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
+/**
+ * Registro de auditoría (spec §1.6).
+ *
+ * RN-C04: todo cambio de políticas queda auditado (quién, cuándo, valor
+ * anterior y nuevo) y no reescribe registros históricos.
+ *
+ * El conjunto del registro es el del modelo auditado, no el contexto de
+ * sesión: la auditoría no puede depender de la superficie por la que entró la
+ * escritura.
+ */
 class AuditLog extends Model
 {
     use HasFactory;
@@ -53,9 +65,10 @@ class AuditLog extends Model
         string $entityType,
         mixed $entityId,
         array $data,
-        ?int $actorId = null
+        ?int $actorId = null,
+        ?int $complexId = null
     ): self {
-        return self::createLog('created', $entityType, $entityId, null, $data, $actorId);
+        return self::createLog('created', $entityType, $entityId, null, $data, $actorId, $complexId);
     }
 
     /**
@@ -66,9 +79,10 @@ class AuditLog extends Model
         mixed $entityId,
         array $before,
         array $after,
-        ?int $actorId = null
+        ?int $actorId = null,
+        ?int $complexId = null
     ): self {
-        return self::createLog('updated', $entityType, $entityId, $before, $after, $actorId);
+        return self::createLog('updated', $entityType, $entityId, $before, $after, $actorId, $complexId);
     }
 
     /**
@@ -78,9 +92,10 @@ class AuditLog extends Model
         string $entityType,
         mixed $entityId,
         array $data,
-        ?int $actorId = null
+        ?int $actorId = null,
+        ?int $complexId = null
     ): self {
-        return self::createLog('deleted', $entityType, $entityId, $data, null, $actorId);
+        return self::createLog('deleted', $entityType, $entityId, $data, null, $actorId, $complexId);
     }
 
     /**
@@ -92,14 +107,16 @@ class AuditLog extends Model
         mixed $entityId,
         ?array $before,
         ?array $after,
-        ?int $actorId
+        ?int $actorId,
+        ?int $complexId
     ): self {
-        $actorId ??= auth()->id();
-        $complexId = ComplexContext::getCurrentComplexId();
+        $actorId ??= auth()->id() === null ? null : (int) auth()->id();
+        $complexId ??= ComplexContext::getCurrentComplexId();
 
-        // Don't log if we don't have a complex context (e.g., running in console)
+        // Un registro sin conjunto no se puede auditar: se falla de forma
+        // explicita en lugar de perder la traza en silencio (RN-C04).
         if ($complexId === null) {
-            return new self();
+            throw new LogicException('No se puede auditar un registro sin conjunto residencial.');
         }
 
         return self::create([

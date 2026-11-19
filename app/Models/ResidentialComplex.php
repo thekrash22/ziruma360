@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ComplexModule;
 use App\Enums\ResidentialComplexStatus;
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,7 +12,7 @@ use Illuminate\Support\Str;
 
 class ResidentialComplex extends Model
 {
-    use HasFactory;
+    use Auditable, HasFactory;
 
     protected $fillable = [
         'uuid',
@@ -44,6 +45,23 @@ class ResidentialComplex extends Model
                 $complex->uuid = (string) Str::uuid();
             }
         });
+    }
+
+    /**
+     * El conjunto es su propio contenedor de auditoría: su traza se borra
+     * con él (FK en cascada), así que el borrado no deja registro.
+     */
+    public function auditRecordsDeletion(): bool
+    {
+        return false;
+    }
+
+    /**
+     * El conjunto auditado es el propio conjunto.
+     */
+    public function auditComplexId(): ?int
+    {
+        return $this->id === null ? null : (int) $this->id;
     }
 
     /**
