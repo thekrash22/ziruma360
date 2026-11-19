@@ -163,6 +163,7 @@ class PropertyUnit extends Model
             })->orWhereHas('occupancies', function (Builder $occupancy) use ($user, $complexId, $today) {
                 $occupancy->where('residential_complex_id', $complexId)
                     ->where('status', OccupancyStatus::ACTIVE->value)
+                    ->where('valid_from', '<=', $today)
                     ->where(fn (Builder $query) => $query->whereNull('valid_until')
                         ->orWhere('valid_until', '>=', $today))
                     ->whereHas('person', fn (Builder $person) => $person->where('user_id', $user->id));

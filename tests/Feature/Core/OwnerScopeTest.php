@@ -3,8 +3,10 @@
 namespace Tests\Feature\Core;
 
 use App\Enums\AuthorizationType;
+use App\Enums\OccupancyStatus;
 use App\Enums\SystemRole;
 use App\Models\PropertyUnitAuthorization;
+use App\Models\UnitOccupancy;
 use Illuminate\Support\Carbon;
 
 /**
@@ -208,6 +210,34 @@ class OwnerScopeTest extends CoreTestCase
         ]);
 
         $response = $this->actingAs($owner)
+            ->getJson('/api/v1/core/property-units')
+            ->assertOk();
+
+        $this->assertFalse(collect($response->json('data'))->pluck('uuid')->contains($unit->uuid));
+    }
+
+    public function test_an_occupancy_that_starts_tomorrow_is_not_within_the_scope(): void
+    {
+        // Una ocupacion vigente a partir de manana no es una ocupacion
+        // vigente hoy: no puede dar alcance sobre la unidad.
+        Carbon::setTestNow(Carbon::parse('2026-06-15 12:00:00', 'UTC'));
+
+        $complex = $this->makeComplex('Torres');
+
+        [$resident] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $unit = $this->makeUnit($complex, 'A-101');
+
+        UnitOccupancy::factory()
+            ->forComplex($complex)
+            ->create([
+                'property_unit_id' => $unit->id,
+                'person_id' => $this->makePerson($complex, $resident, 'Residente')->id,
+                'valid_from' => now()->addDay()->toDateString(),
+                'status' => OccupancyStatus::ACTIVE,
+            ]);
+
+        $response = $this->actingAs($resident)
             ->getJson('/api/v1/core/property-units')
             ->assertOk();
 

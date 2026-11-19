@@ -95,6 +95,27 @@ class DoormanPrivacyTest extends CoreTestCase
         $this->assertSame($person->document_number, $payload['document_number']);
     }
 
+    public function test_the_document_is_masked_without_the_explicit_permission(): void
+    {
+        // SEG-P01: el documento se muestra enmascarado salvo permiso
+        // explicito. `person.view` no alcanza para verlo en claro.
+        $complex = $this->makeComplex('Torres');
+
+        [$owner] = $this->makeMember($complex, SystemRole::OWNER);
+
+        $person = $this->makePerson($complex, null, 'Ana Torres');
+
+        $response = $this->actingAs($owner)
+            ->getJson("/api/v1/core/people/{$person->uuid}")
+            ->assertOk();
+
+        $document = (string) $person->document_number;
+        $masked = (string) $response->json('data.document_number');
+
+        $this->assertNotSame($document, $masked);
+        $this->assertSame(str_repeat('*', max(strlen($document) - 4, 0)).substr($document, -4), $masked);
+    }
+
     public function test_a_role_without_person_permissions_cannot_list_people(): void
     {
         $complex = $this->makeComplex('Torres');
