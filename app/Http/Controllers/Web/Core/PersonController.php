@@ -118,6 +118,11 @@ class PersonController extends Controller
             'No tienes permiso para crear personas en este conjunto.'
         );
 
+        // Guarda de escritura del documento de identidad (SEG-P01): sin el
+        // permiso explicito no se escribe un documento, y la peticion que
+        // trae uno se rechaza con 403 sin crear nada.
+        $this->assertCanWriteIdentityDocument($request, $user, $complexId);
+
         try {
             $validated = $this->validatePerson($request, $complexId, null, true);
         } catch (ValidationException $exception) {
@@ -209,6 +214,9 @@ class PersonController extends Controller
             'No tienes permiso para editar esta persona.'
         );
 
+        // Guarda de escritura del documento de identidad (SEG-P01).
+        $this->assertCanWriteIdentityDocument($request, $user, $complexId);
+
         try {
             $validated = $this->validatePerson($request, $complexId, $person);
         } catch (ValidationException $exception) {
@@ -216,7 +224,8 @@ class PersonController extends Controller
         }
 
         // Sin el permiso explicito el documento de identidad no se modifica
-        // (SEG-P01): la UI no lo expone en claro.
+        // (SEG-P01): la UI no lo expone en claro y una peticion que trae un
+        // documento ya fue rechazada con 403 mas arriba.
         if (! PermissionService::has($user, ComplexPermission::PERSON_VIEW_DOCUMENT, $complexId)) {
             unset($validated['document_number']);
         }
@@ -319,6 +328,47 @@ class PersonController extends Controller
         abort_if($person === null, 404, 'Persona no encontrada.');
 
         return $person;
+    }
+
+    /**
+     * Guarda de escritura del documento de identidad (SEG-P01).
+     *
+     * Escribir el documento exige el permiso explicito `person.view_document`,
+     * el mismo que lo expone en claro: sin el, la peticion que trae un
+     * documento se rechaza con 403 y no se persiste nada. Una peticion que
+     * solo trae el documento vacio o nulo no es una escritura de documento y
+     * se acepta, pero el documento no se escribe (el que ya tiene la persona
+     * se conserva).
+     */
+    protected function assertCanWriteIdentityDocument(Request $request, User $user, int $complexId): void
+    {
+        if (! $this->writesIdentityDocument($request)) {
+            return;
+        }
+
+        abort_unless(
+            PermissionService::has($user, ComplexPermission::PERSON_VIEW_DOCUMENT, $complexId),
+            403,
+            'No tienes permiso para escribir el documento de identidad.'
+        );
+    }
+
+    /**
+     * Si la peticion escribe un documento de identidad.
+     */
+    protected function writesIdentityDocument(Request $request): bool
+    {
+        $number = $request->input('document_number');
+
+        if ($number === null) {
+            return false;
+        }
+
+        if (is_string($number)) {
+            return trim($number) !== '';
+        }
+
+        return (bool) $number;
     }
 
     /**

@@ -20,6 +20,13 @@ use Illuminate\Validation\Rule;
  * identificador de otro conjunto no se resuelve y responde 404, sin filtrar
  * su existencia (ACE-C01). El permiso de edicion lo decide el catalogo
  * (`person.edit`).
+ *
+ * Guarda de escritura del documento de identidad (SEG-P01): escribir un
+ * documento exige el permiso explicito `person.view_document`, el mismo que
+ * lo expone en claro. Sin el, la peticion que trae un documento se rechaza
+ * con 403 y no modifica nada; una peticion que solo trae el documento vacio
+ * o nulo se acepta pero el documento no se escribe (el que ya tiene la
+ * persona se conserva).
  */
 class UpdatePersonRequest extends FormRequest
 {
@@ -27,11 +34,21 @@ class UpdatePersonRequest extends FormRequest
     {
         $person = self::resolvePerson($this);
 
-        return PermissionService::has(
+        if ($this->user() === null) {
+            return false;
+        }
+
+        if (! PermissionService::has(
             $this->user(),
             ComplexPermission::PERSON_EDIT,
             $this->complexId()
-        );
+        )) {
+            return false;
+        }
+
+        $this->assertCanWriteIdentityDocument();
+
+        return true;
     }
 
     /**
@@ -51,6 +68,26 @@ class UpdatePersonRequest extends FormRequest
             'status' => ['sometimes', Rule::enum(PersonStatus::class)],
             'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ];
+    }
+
+    /**
+     * Los datos validados, sin el documento de identidad cuando el actor no
+     * tiene el permiso explicito: sin el, el documento que ya tiene la
+     * persona se conserva (no se escribe ni se borra).
+     */
+    public function validated($key = null, $default = null)
+    {
+        $validated = parent::validated($key, $default);
+
+        if ($key !== null || ! is_array($validated)) {
+            return $validated;
+        }
+
+        if (! $this->canWriteIdentityDocument()) {
+            unset($validated['document_number']);
+        }
+
+        return $validated;
     }
 
     /**
@@ -133,5 +170,56 @@ class UpdatePersonRequest extends FormRequest
     protected function complexId(): int
     {
         return (int) $this->attributes->get('complex_id');
+    }
+
+    /**
+     * Escribir el documento de identidad exige el permiso explicito
+     * `person.view_document`: sin el, la peticion se rechaza con 403 antes de
+     * tocar la base de datos.
+     */
+    protected function assertCanWriteIdentityDocument(): void
+    {
+        if (! $this->writesIdentityDocument()) {
+            return;
+        }
+
+        abort_unless(
+            $this->canWriteIdentityDocument(),
+            403,
+            'No tienes permiso para escribir el documento de identidad.'
+        );
+    }
+
+    /**
+     * Si el actor puede escribir el documento de identidad.
+     */
+    protected function canWriteIdentityDocument(): bool
+    {
+        return $this->user() !== null
+            && PermissionService::has(
+                $this->user(),
+                ComplexPermission::PERSON_VIEW_DOCUMENT,
+                $this->complexId()
+            );
+    }
+
+    /**
+     * La peticion escribe un documento de identidad cuando trae un numero de
+     * documento con valor. Un valor vacio o nulo no es una escritura de
+     * documento.
+     */
+    protected function writesIdentityDocument(): bool
+    {
+        $number = $this->input('document_number');
+
+        if ($number === null) {
+            return false;
+        }
+
+        if (is_string($number)) {
+            return trim($number) !== '';
+        }
+
+        return (bool) $number;
     }
 }

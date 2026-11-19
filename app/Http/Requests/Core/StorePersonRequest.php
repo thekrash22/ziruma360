@@ -14,16 +14,31 @@ use Illuminate\Validation\Rule;
  *
  * El conjunto activo lo resuelve el servidor (S9): el cliente nunca lo
  * envia. El permiso de alta lo decide el catalogo (`person.create`).
+ *
+ * Guarda de escritura del documento de identidad (SEG-P01): escribir un
+ * documento exige el permiso explicito `person.view_document`, el mismo que
+ * lo expone en claro. Sin el, la peticion se rechaza con 403 y no se crea
+ * ninguna persona.
  */
 class StorePersonRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return PermissionService::has(
+        if ($this->user() === null) {
+            return false;
+        }
+
+        if (! PermissionService::has(
             $this->user(),
             ComplexPermission::PERSON_CREATE,
             $this->complexId()
-        );
+        )) {
+            return false;
+        }
+
+        $this->assertCanWriteIdentityDocument();
+
+        return true;
     }
 
     /**
@@ -56,5 +71,56 @@ class StorePersonRequest extends FormRequest
     protected function complexId(): int
     {
         return (int) $this->attributes->get('complex_id');
+    }
+
+    /**
+     * Escribir el documento de identidad exige el permiso explicito
+     * `person.view_document`: sin el, la peticion se rechaza con 403 antes de
+     * tocar la base de datos.
+     */
+    protected function assertCanWriteIdentityDocument(): void
+    {
+        if (! $this->writesIdentityDocument()) {
+            return;
+        }
+
+        abort_unless(
+            $this->canWriteIdentityDocument(),
+            403,
+            'No tienes permiso para escribir el documento de identidad.'
+        );
+    }
+
+    /**
+     * Si el actor puede escribir el documento de identidad.
+     */
+    protected function canWriteIdentityDocument(): bool
+    {
+        return $this->user() !== null
+            && PermissionService::has(
+                $this->user(),
+                ComplexPermission::PERSON_VIEW_DOCUMENT,
+                $this->complexId()
+            );
+    }
+
+    /**
+     * La peticion escribe un documento de identidad cuando trae un numero de
+     * documento con valor. Un valor vacio o nulo no es una escritura de
+     * documento (la UI lo envia siempre en el formulario de alta).
+     */
+    protected function writesIdentityDocument(): bool
+    {
+        $number = $this->input('document_number');
+
+        if ($number === null) {
+            return false;
+        }
+
+        if (is_string($number)) {
+            return trim($number) !== '';
+        }
+
+        return (bool) $number;
     }
 }
