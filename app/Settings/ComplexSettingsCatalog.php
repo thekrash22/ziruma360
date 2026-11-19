@@ -239,6 +239,42 @@ final class ComplexSettingsCatalog
     }
 
     /**
+     * Fusiona un cambio parcial sobre las politicas vigentes.
+     *
+     * El PATCH es por grupos y por claves: lo que no viene conserva su
+     * valor. Lo que viene se REEMPLAZA por completo, incluidas las listas.
+     * `array_replace_recursive` no sirve aqui porque fusiona las listas
+     * por indice: una lista mas corta dejaba pegadas las politicas
+     * viejas y una lista vacia no limpiaba nada.
+     *
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $incoming
+     * @return array<string, mixed>
+     */
+    public static function merge(array $current, array $incoming): array
+    {
+        $merged = $current;
+
+        foreach ($incoming as $group => $values) {
+            if (! is_array($values)) {
+                $merged[$group] = $values;
+
+                continue;
+            }
+
+            $base = is_array($merged[$group] ?? null) ? $merged[$group] : [];
+
+            foreach ($values as $key => $value) {
+                $base[$key] = $value;
+            }
+
+            $merged[$group] = $base;
+        }
+
+        return $merged;
+    }
+
+    /**
      * Lectura tipada: aplica los valores por defecto del catálogo a las
      * claves que el conjunto no define.
      *

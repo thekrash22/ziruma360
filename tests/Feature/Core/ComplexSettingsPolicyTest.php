@@ -179,6 +179,48 @@ class ComplexSettingsPolicyTest extends CoreTestCase
         $this->assertSame(90, $settings['privacy']['retention_days']);
     }
 
+    public function test_a_list_policy_is_replaced_and_not_merged_by_index(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/v1/core/complex/settings', [
+                'access' => ['invitable_roles' => ['complex_admin', 'doorman', 'owner']],
+            ])
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->patchJson('/api/v1/core/complex/settings', [
+                'access' => ['invitable_roles' => ['doorman']],
+            ])
+            ->assertOk();
+
+        $this->assertSame(['doorman'], $complex->fresh()->settings['access']['invitable_roles']);
+    }
+
+    public function test_an_empty_list_clears_a_list_policy(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/v1/core/complex/settings', [
+                'access' => ['invitable_roles' => ['doorman', 'owner']],
+            ])
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->patchJson('/api/v1/core/complex/settings', [
+                'access' => ['invitable_roles' => []],
+            ])
+            ->assertOk();
+
+        $this->assertSame([], $complex->fresh()->settings['access']['invitable_roles']);
+    }
+
     public function test_an_owner_cannot_change_the_policies_of_the_complex(): void
     {
         $complex = $this->makeComplex('Torres');

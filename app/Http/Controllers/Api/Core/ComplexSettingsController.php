@@ -37,11 +37,12 @@ class ComplexSettingsController extends CoreController
 
         // El cambio es un PATCH por grupos: lo que no viene en la peticion
         // conserva su valor, y lo que viene se valida contra el catalogo
-        // (el modelo rechaza cualquier clave fuera del catalogo).
+        // (el modelo rechaza cualquier clave fuera del catalogo) y
+        // REEMPLAZA a la clave enviada, incluidas las listas.
         $current = ComplexSettingsCatalog::onlyKnown((array) $complex->settings);
 
         $complex->update([
-            'settings' => array_replace_recursive($current, $request->validated()),
+            'settings' => ComplexSettingsCatalog::merge($current, $request->validated()),
         ]);
 
         return response()->json([
