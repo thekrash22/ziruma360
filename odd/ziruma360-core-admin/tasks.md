@@ -118,10 +118,22 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Entrega: push autorizado y ejecutado (`origin/feat/authorizations` en `3a3738c`); PR manual en `https://github.com/thekrash22/ziruma360/pull/new/feat/authorizations` con base `feat/employments`
 - Diferidos con registro: vocabulario cerrado de `scope` (el spec pide "lista validada" pero no define el vocabulario, igual que `delegated_permissions` y `schedule`) y el hallazgo informativo `R4-access-authorization-stale-after-membership-revocation` de la revisión nativa de T14 (RN-P11 queda obsoleto tras suspender o revocar la membresía; su corrección natural es un trigger sobre `residential_complex_memberships`)
 
-## T16: Suite Pest de estructura física y relaciones
-- Status: pending
-- Dependencias: T8-T15
+## T16: Suite transversal §6 sobre T7–T15
+- Status: planned (registrado antes de la primera escritura de código)
+- Specs: S31, S32, S33, S34, S35, S36, S37
+- Dependencias: T7-T15 (T9, T10 y T11 siguen siendo work units separadas)
 - Prioridad: Alta
+- Rama: `feat/core-transversal-suite` (desde `feat/authorizations`, que ya integra T8, T12, T13, T14 y T15)
+- Alcance: los cinco casos de §6 del spec sobre el dominio nuevo: (a) aislamiento a nivel de endpoint, (b) alcance de propiedad ("Propietario solo gestiona sus inmuebles, no los de otros"), (c) cambio de titularidad con historial y auditoría, (d) políticas: valores inválidos de `settings` se rechazan y los cambios quedan auditados, (e) privacidad: portería no accede a datos personales fuera de su función. **Sin migraciones nuevas**
+- Soporte mínimo que hay que construir para que la suite tenga comportamiento real (no alcanza con tests superficiales):
+  - `AuditLog` + trait `Auditable` corregidos y activos sobre `residential_complexes` y `property_unit_ownerships` (hoy están desconectados, y `AuditLog::createLog` referencia `ComplexContext` sin importarlo y devuelve un modelo sin persistir sin contexto de sesión)
+  - Catálogo tipado de `residential_complexes.settings` por grupos de política, con validación en el modelo y en el `FormRequest` (clave desconocida o valor inválido → 422, sin persistir ni auditar)
+  - Policies de Laravel (SEG-C03) + middleware de resolución del conjunto activo en servidor contra las membresías activas (S9)
+  - Alcance por inmueble resuelto con el dominio ya entregado: titularidad vigente (T12), ocupación vigente (T13) y autorización vigente (T15)
+  - Superficie HTTP nueva y mínima en `/api/v1/core/*`; el legacy (`/units`, `/people`, `/api/v1/units`, `/api/v1/people`) no se toca (es T17)
+- Estrategia de pruebas: `tests/Feature/Core/` con una clase por caso de §6, en el estilo de clases PHPUnit que ya usa el repositorio (el runner es `vendor/bin/phpunit`; `tests/Pest.php` solo declara `RefreshDatabase` y no enlaza el `TestCase`, así que un archivo Pest no arrancaría la aplicación), contra PostgreSQL en la base dedicada `z360_test`
+- Riesgo: item 2 (seguridad: autorización y aislamiento en la capa HTTP) y item 3 (contratos consumidos: `AuditLog` y el trait `Auditable` cambian de contrato). La verificación es la suite completa en PostgreSQL más la revisión nativa del slice
+- Deuda que T16 deja registrada: `ComplexContext::resolveFromRequest` confiaba en el encabezado del cliente; T16 lo corrige, pero el resto de la superficie legacy sigue sin enforcement HTTP (T17)
 
 ## T17: Retirar el modelo legacy y migrar sus rutas
 - Status: pending
