@@ -2,73 +2,103 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head } from '@inertiajs/vue3';
 
-interface Persona {
+interface BuildingSummary {
   uuid: string;
-  nombre_completo: string;
-  tipo_documento: string;
-  numero_documento: string;
-  pivot: {
-    tipo_relacion: string;
-    es_principal: boolean;
-  };
+  name: string;
+  code: string;
 }
 
-interface Unidad {
-  id: number;
+interface FloorSummary {
   uuid: string;
-  numero: string;
-  piso: string | null;
-  torre: string | null;
-  tipo: string;
-  area_m2: number | null;
-  habitaciones: number | null;
-  banos: number | null;
+  floor_number: number;
+  name: string | null;
+  display_name: string;
+}
+
+interface Ownership {
+  uuid: string;
+  person_uuid: string | null;
+  person_name: string | null;
+  ownership_type: string | null;
+  ownership_type_label: string | null;
+  percentage: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  status: string | null;
+}
+
+interface Occupancy {
+  uuid: string;
+  person_uuid: string | null;
+  person_name: string | null;
+  occupancy_type: string | null;
+  occupancy_type_label: string | null;
+  is_primary_contact: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  status: string | null;
+}
+
+interface Lease {
+  uuid: string;
+  tenant_uuid: string | null;
+  tenant_name: string | null;
+  landlord_uuid: string | null;
+  landlord_name: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  status: string | null;
+  status_label: string | null;
+}
+
+interface Unit {
+  uuid: string;
+  number: string;
+  unit_type: string;
+  unit_type_label: string;
   status: string;
   status_label: string;
-  settings: any;
-  residential_complex: {
-    uuid: string;
-    name: string;
-    code: string;
+  internal_code: string | null;
+  area_m2: string | null;
+  coefficient: string | null;
+  notes: string | null;
+  building: BuildingSummary | null;
+  building_floor: FloorSummary | null;
+  ownerships: Ownership[];
+  occupancies: Occupancy[];
+  leases: Lease[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+interface PageProps {
+  unit: Unit;
+  flash?: {
+    success?: string;
+    error?: string;
   };
-  personas: Persona[];
-  created_at: string;
-  updated_at: string;
 }
 
-interface Props {
-  unidad: Unidad;
-}
+const props = defineProps<PageProps>();
 
-const props = defineProps<Props>();
-
-const getStatusColor = (status: string) => {
+const getStatusColor = (status: string | null) => {
   const colors: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
     active: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
     inactive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-    maintenance: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
+    under_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
   };
-  return colors[status] || colors.draft;
+  return colors[status || ''] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
 };
 
-const getRelationLabel = (relacion: string) => {
-  const labels: Record<string, string> = {
-    propietario: 'Propietario',
-    inquilino: 'Inquilino',
-    residente: 'Residente',
-    responsable: 'Responsable',
-  };
-  return labels[relacion] || relacion;
-};
+const formatDate = (dateString: string | null) => {
+  if (!dateString) {
+    return '-';
+  }
 
-const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString('es-CO', {
     year: 'numeric',
-    month: 'long',
+    month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
 };
 </script>
@@ -77,11 +107,17 @@ const formatDate = (dateString: string) => {
   <Head title="Unidad" />
 
   <AppLayout>
+    <!-- Flash Messages -->
+    <div v-if="props.flash?.success" class="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-400">
+      {{ props.flash.success }}
+    </div>
+
+    <!-- Breadcrumb -->
     <div class="mb-6">
       <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
         <a :href="route('units.index')" class="hover:text-gray-700 dark:hover:text-gray-300">Unidades</a>
         <span>/</span>
-        <span class="text-gray-800 dark:text-white">{{ unidad.numero }}</span>
+        <span class="text-gray-800 dark:text-white">{{ props.unit.number }}</span>
       </div>
     </div>
 
@@ -90,20 +126,21 @@ const formatDate = (dateString: string) => {
       <div>
         <div class="flex items-center gap-3">
           <h2 class="text-title-md font-semibold text-gray-800 dark:text-white">
-            {{ unidad.numero }}
-            <span v-if="unidad.torre" class="text-gray-500">/ {{ unidad.torre }}</span>
+            {{ props.unit.number }}
           </h2>
-          <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(unidad.status)]">
-            {{ unidad.status_label }}
+          <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(props.unit.status)]">
+            {{ props.unit.status_label }}
           </span>
         </div>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {{ unidad.residential_complex?.name }} • {{ unidad.tipo }}
+        <p class="mt-1 text-sm text-gray-500">
+          {{ props.unit.unit_type_label }}
+          <span v-if="props.unit.building"> · {{ props.unit.building.name }}</span>
+          <span v-if="props.unit.building_floor"> · {{ props.unit.building_floor.display_name }}</span>
         </p>
       </div>
       <div class="flex items-center gap-2">
         <a
-          :href="route('units.edit', unidad.uuid)"
+          :href="route('units.edit', props.unit.uuid)"
           class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -115,109 +152,192 @@ const formatDate = (dateString: string) => {
     </div>
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <!-- Main Info -->
+      <!-- Relations -->
       <div class="lg:col-span-2 space-y-6">
-        <!-- Basic Details -->
+        <!-- Titularidades -->
         <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <h3 class="mb-4 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
-            Información de la Unidad
+            Titularidades
           </h3>
-          <div class="grid grid-cols-2 gap-6">
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Conjunto Residencial</p>
-              <p class="mt-1 font-medium text-gray-800 dark:text-white">
-                {{ unidad.residential_complex?.name || '-' }}
-              </p>
-              <p class="text-sm text-gray-500">{{ unidad.residential_complex?.code }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Tipo</p>
-              <p class="mt-1 font-medium text-gray-800 dark:text-white">{{ unidad.tipo }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Torre</p>
-              <p class="mt-1 font-medium text-gray-800 dark:text-white">{{ unidad.torre || '-' }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Piso</p>
-              <p class="mt-1 font-medium text-gray-800 dark:text-white">{{ unidad.piso || '-' }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Área</p>
-              <p class="mt-1 font-medium text-gray-800 dark:text-white">
-                {{ unidad.area_m2 ? `${unidad.area_m2} m²` : '-' }}
-              </p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Habitaciones / Baños</p>
-              <p class="mt-1 font-medium text-gray-800 dark:text-white">
-                {{ unidad.habitaciones || '-' }} / {{ unidad.banos || '-' }}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Personas -->
-        <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <h3 class="mb-4 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
-            Personas Relacionadas
-          </h3>
-          <div v-if="props.unidad.personas && props.unidad.personas.length > 0" class="space-y-3">
+          <div v-if="props.unit.ownerships.length > 0" class="space-y-3">
             <div
-              v-for="persona in props.unidad.personas"
-              :key="persona.uuid"
-              class="flex items-center justify-between rounded-lg border border-gray-100 p-3 dark:border-gray-800"
+              v-for="ownership in props.unit.ownerships"
+              :key="ownership.uuid"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 p-3 dark:border-gray-800"
             >
               <div class="flex items-center gap-3">
                 <div class="flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 text-sm font-medium text-white">
-                  {{ persona.nombre_completo.charAt(0) }}
+                  {{ (ownership.person_name || '?').charAt(0) }}
                 </div>
                 <div>
                   <p class="font-medium text-gray-800 dark:text-white">
-                    {{ persona.nombre_completo }}
-                    <span v-if="persona.pivot?.es_principal" class="ml-1 text-xs text-brand-500">(Principal)</span>
+                    {{ ownership.person_name || 'Persona sin nombre' }}
                   </p>
                   <p class="text-sm text-gray-500">
-                    {{ persona.tipo_documento }} {{ persona.numero_documento }}
+                    {{ ownership.ownership_type_label }}
+                    <span v-if="ownership.percentage"> · {{ ownership.percentage }}%</span>
+                    <span v-if="ownership.valid_from">
+                      · desde {{ formatDate(ownership.valid_from) }}
+                    </span>
                   </p>
                 </div>
               </div>
-              <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                {{ getRelationLabel(persona.pivot?.tipo_relacion || '') }}
+              <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(ownership.status)]">
+                {{ ownership.status }}
               </span>
             </div>
           </div>
           <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-            No hay personas relacionadas con esta unidad.
+            Esta unidad no tiene titularidades registradas.
+          </p>
+        </div>
+
+        <!-- Ocupaciones -->
+        <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 class="mb-4 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
+            Ocupaciones
+          </h3>
+          <div v-if="props.unit.occupancies.length > 0" class="space-y-3">
+            <div
+              v-for="occupancy in props.unit.occupancies"
+              :key="occupancy.uuid"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 p-3 dark:border-gray-800"
+            >
+              <div>
+                <p class="font-medium text-gray-800 dark:text-white">
+                  {{ occupancy.person_name || 'Persona sin nombre' }}
+                  <span v-if="occupancy.is_primary_contact" class="ml-1 text-xs text-brand-500">(Contacto principal)</span>
+                </p>
+                <p class="text-sm text-gray-500">
+                  {{ occupancy.occupancy_type_label }}
+                  <span v-if="occupancy.valid_from">
+                    · desde {{ formatDate(occupancy.valid_from) }}
+                  </span>
+                </p>
+              </div>
+              <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(occupancy.status)]">
+                {{ occupancy.status }}
+              </span>
+            </div>
+          </div>
+          <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+            Esta unidad no tiene ocupaciones registradas.
+          </p>
+        </div>
+
+        <!-- Arrendamientos -->
+        <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 class="mb-4 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
+            Arrendamientos
+          </h3>
+          <div v-if="props.unit.leases.length > 0" class="space-y-3">
+            <div
+              v-for="lease in props.unit.leases"
+              :key="lease.uuid"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 p-3 dark:border-gray-800"
+            >
+              <div>
+                <p class="font-medium text-gray-800 dark:text-white">
+                  {{ lease.tenant_name || 'Arrendatario sin nombre' }}
+                </p>
+                <p class="text-sm text-gray-500">
+                  {{ formatDate(lease.starts_on) }} → {{ lease.ends_on ? formatDate(lease.ends_on) : 'sin fecha de fin' }}
+                  <span v-if="lease.landlord_name"> · Titular: {{ lease.landlord_name }}</span>
+                </p>
+              </div>
+              <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(lease.status)]">
+                {{ lease.status_label }}
+              </span>
+            </div>
+          </div>
+          <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+            Esta unidad no tiene arrendamientos registrados.
           </p>
         </div>
       </div>
 
       <!-- Sidebar -->
       <div class="space-y-6">
-        <!-- Timestamps -->
+        <!-- Info Card -->
         <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <h3 class="mb-4 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
+          <h3 class="mb-4 text-sm font-medium uppercase text-gray-500 dark:text-gray-400">
+            Informacion de la Unidad
+          </h3>
+          <dl class="space-y-3">
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Numero</dt>
+              <dd class="text-sm font-medium text-gray-800 dark:text-white">{{ props.unit.number }}</dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Tipo</dt>
+              <dd class="text-sm font-medium text-gray-800 dark:text-white">{{ props.unit.unit_type_label }}</dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Edificio</dt>
+              <dd class="text-sm font-medium text-gray-800 dark:text-white">
+                {{ props.unit.building?.name || '-' }}
+              </dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Piso</dt>
+              <dd class="text-sm font-medium text-gray-800 dark:text-white">
+                {{ props.unit.building_floor?.display_name || '-' }}
+              </dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Codigo interno</dt>
+              <dd class="text-sm font-medium text-gray-800 dark:text-white">
+                {{ props.unit.internal_code || '-' }}
+              </dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Area</dt>
+              <dd class="text-sm font-medium text-gray-800 dark:text-white">
+                {{ props.unit.area_m2 ? `${props.unit.area_m2} m2` : '-' }}
+              </dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-sm text-gray-500 dark:text-gray-400">Estado</dt>
+              <dd>
+                <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(props.unit.status)]">
+                  {{ props.unit.status_label }}
+                </span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <!-- Notas -->
+        <div v-if="props.unit.notes" class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 class="mb-4 text-sm font-medium uppercase text-gray-500 dark:text-gray-400">
+            Notas
+          </h3>
+          <p class="whitespace-pre-line text-sm text-gray-600 dark:text-gray-400">{{ props.unit.notes }}</p>
+        </div>
+
+        <!-- Historial -->
+        <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 class="mb-4 text-sm font-medium uppercase text-gray-500 dark:text-gray-400">
             Historial
           </h3>
           <div class="space-y-3">
             <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Fecha de Creación</p>
-              <p class="text-sm text-gray-800 dark:text-white">{{ formatDate(unidad.created_at) }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Fecha de Creacion</p>
+              <p class="text-sm text-gray-800 dark:text-white">{{ formatDate(props.unit.created_at) }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Última Actualización</p>
-              <p class="text-sm text-gray-800 dark:text-white">{{ formatDate(unidad.updated_at) }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Ultima Actualizacion</p>
+              <p class="text-sm text-gray-800 dark:text-white">{{ formatDate(props.unit.updated_at) }}</p>
             </div>
           </div>
         </div>
 
         <!-- UUID -->
         <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <h3 class="mb-4 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
+          <h3 class="mb-4 text-sm font-medium uppercase text-gray-500 dark:text-gray-400">
             Identificador
           </h3>
-          <p class="font-mono text-sm text-gray-600 dark:text-gray-400">{{ unidad.uuid }}</p>
+          <p class="break-all font-mono text-sm text-gray-600 dark:text-gray-400">{{ props.unit.uuid }}</p>
         </div>
       </div>
     </div>
