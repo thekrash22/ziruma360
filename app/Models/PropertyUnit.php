@@ -114,6 +114,14 @@ class PropertyUnit extends Model
     }
 
     /**
+     * Autorizaciones de gestion sobre la unidad (spec §4.8).
+     */
+    public function authorizations(): HasMany
+    {
+        return $this->hasMany(PropertyUnitAuthorization::class);
+    }
+
+    /**
      * Scope: active units
      */
     public function scopeActive($query)
