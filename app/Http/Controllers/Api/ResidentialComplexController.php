@@ -138,8 +138,10 @@ class ResidentialComplexController extends Controller
         $target = $this->targetStatus($validated);
 
         // Un conjunto suspendido o archivado no es escribible: lo unico que
-        // admite es su propio estado (la reactivacion por la plataforma).
-        if (! $complex->isWritable() && $this->touchesOtherAttributes($validated)) {
+        // admite es un cambio real de estado (la reactivacion por la
+        // plataforma). Repetir su propio estado tampoco es una escritura
+        // admitida.
+        if (! $complex->isWritable() && ! $this->isStatusChange($target, $complex)) {
             abort(422, 'No se puede editar un conjunto suspendido o archivado.');
         }
 
@@ -192,13 +194,11 @@ class ResidentialComplexController extends Controller
     }
 
     /**
-     * El payload escribe atributos que no son el estado.
-     *
-     * @param  array<string, mixed>  $validated
+     * El payload propone un cambio real de estado.
      */
-    private function touchesOtherAttributes(array $validated): bool
+    private function isStatusChange(?ResidentialComplexStatus $target, ResidentialComplex $complex): bool
     {
-        return array_diff(array_keys($validated), ['status']) !== [];
+        return $target !== null && $target !== $complex->status;
     }
 
     /**

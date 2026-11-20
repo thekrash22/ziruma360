@@ -935,6 +935,69 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->assertSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
     }
 
+    public function test_a_suspended_complex_rejects_a_no_op_status_write(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::SUSPENDED]);
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        // Un conjunto no escribible no admite ninguna escritura, ni siquiera
+        // repetir su propio estado.
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->assertStatus(422);
+
+        $this->assertSame(
+            'No se puede editar un conjunto suspendido o archivado.',
+            $response->json('message')
+        );
+        $this->assertSame(ResidentialComplexStatus::SUSPENDED, $complex->fresh()->status);
+    }
+
+    public function test_a_status_change_is_audited(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->assertOk();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'residential_complex_id' => $complex->id,
+            'entity_type' => ResidentialComplex::class,
+            'action' => 'updated',
+        ]);
+    }
+
+    public function test_the_listing_still_filters_by_status(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $response = $this->actingAs($user)
+            ->getJson('/api/v1/buildings?status=active')
+            ->assertOk();
+
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame($complex->uuid, $response->json('data.0.uuid'));
+    }
+
+    public function test_a_status_change_on_a_complex_of_another_complex_is_404(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+        [$user] = $this->makeMember($other, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->assertNotFound();
+
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
     public function test_a_complex_is_always_created_in_draft(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
