@@ -93,7 +93,7 @@ class PersonController extends CoreController
             return (new PersonResource($existing))->response();
         }
 
-        $person = new Person();
+        $person = new Person;
         $person->fill($data);
         $person->residential_complex_id = $complexId;
         $person->save();

@@ -82,11 +82,13 @@ class LegacySchemaContractTest extends CoreTestCase
 
     public static function legacyClasses(): array
     {
+        // Se referencian por nombre y no con `::class` a proposito: estas clases
+        // no deben existir, asi que importarlas seria una contradiccion.
         return [
-            'Unidad' => [\App\Models\Unidad::class],
-            'Persona' => [\App\Models\Persona::class],
-            'PersonaUnidad' => [\App\Models\PersonaUnidad::class],
-            'UnidadStatus' => [\App\Enums\UnidadStatus::class],
+            'Unidad' => ['App\Models\Unidad'],
+            'Persona' => ['App\Models\Persona'],
+            'PersonaUnidad' => ['App\Models\PersonaUnidad'],
+            'UnidadStatus' => ['App\Enums\UnidadStatus'],
         ];
     }
 
