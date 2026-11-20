@@ -19,7 +19,11 @@ use PHPUnit\Framework\Attributes\DataProvider;
  * - El contrato (S71): para cada rol de sistema, el conjunto **exacto** de
  *   permisos sembrados se compara contra la matriz de §1.3; ni un permiso de
  *   mas ni de menos, para que cualquier deriva futura rompa la suite en vez
- *   de quedar escondida en el seeding.
+ *   de quedar escondida en el seeding. La comparacion es exacta para las
+ *   celdas que la matriz enumera: en la columna de la plataforma, §1.3 marca
+ *   "—" en las tres funciones de administracion del conjunto
+ *   (`complex.edit`, `complex.manage_settings`, `complex.manage_members`) y
+ *   no desglosa los permisos de plataforma (SaaS) que el rol conserva.
  * - La superficie (S72): las celdas que ya tienen superficie HTTP se
  *   comprueban ademas de forma funcional (estructura fisica, unidades y
  *   alcance por inmueble) y se comprueba la no-regresion de la plataforma.
@@ -31,8 +35,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 class PermissionMatrixTest extends CoreTestCase
 {
     /**
-     * El conjunto sembrado de cada rol de sistema es exactamente el de la
-     * matriz de §1.3.
+     * El conjunto sembrado de cada rol de sistema es exactamente el que la
+     * matriz de §1.3 le asigna.
      */
     #[DataProvider('matrixProvider')]
     public function test_the_seeded_permissions_of_the_role_are_exactly_the_ones_of_the_matrix(
@@ -46,7 +50,7 @@ class PermissionMatrixTest extends CoreTestCase
         $this->assertSame(
             $this->sorted($expectedPermissions),
             $this->sorted($seeded),
-            "El conjunto de permisos sembrado de `{$roleKey}` no coincide con la matriz de §1.3."
+            "El conjunto de permisos sembrado de `{$roleKey}` no coincide con el que la matriz de §1.3 le asigna."
         );
     }
 
