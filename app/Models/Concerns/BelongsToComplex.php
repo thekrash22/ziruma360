@@ -26,9 +26,17 @@ trait BelongsToComplex
             }
 
             $complexId = ComplexContext::getCurrentComplexId();
-            if ($complexId !== null) {
-                $builder->where('residential_complex_id', $complexId);
+
+            if ($complexId === null) {
+                // Sin conjunto resuelto no se expone ninguna fila de ningun
+                // conjunto (spec S62): el ambito global nunca devuelve datos
+                // de mas de un conjunto por accidente.
+                $builder->whereIn('residential_complex_id', []);
+
+                return;
             }
+
+            $builder->where('residential_complex_id', $complexId);
         });
 
         // Automatically set residential_complex_id on creating

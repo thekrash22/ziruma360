@@ -30,11 +30,24 @@ class UnitOccupanciesTest extends TestCase
     {
         parent::setUp();
 
-        // El contexto de conjunto es estatico: si otro archivo de prueba lo
-        // dejo seteado, el scope de conjunto filtraria las relaciones.
+        // El contexto de conjunto vive en la sesion: si otro archivo de
+        // prueba lo dejo seteado, el scope de conjunto filtraria las
+        // relaciones.
         ComplexContext::clear();
 
         $this->complex = ResidentialComplex::factory()->create();
+
+        // S62: sin conjunto resuelto el ambito global no devuelve ninguna fila
+        // de ningun conjunto. Este archivo opera sobre un unico conjunto, asi
+        // que el contexto se fija antes de cualquier lectura.
+        ComplexContext::setCurrentComplexId($this->complex->id);
+    }
+
+    protected function tearDown(): void
+    {
+        ComplexContext::clear();
+
+        parent::tearDown();
     }
 
     /**

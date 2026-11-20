@@ -7,6 +7,7 @@ use App\Models\ApartmentType;
 use App\Models\Building;
 use App\Models\BuildingFloor;
 use App\Models\ResidentialComplex;
+use App\Services\ComplexContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,7 +21,22 @@ class PhysicalStructureTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        ComplexContext::clear();
+
         $this->complex = ResidentialComplex::factory()->create();
+
+        // S62: sin conjunto resuelto el ambito global no devuelve ninguna fila
+        // de ningun conjunto. Este archivo opera sobre un unico conjunto, asi
+        // que el contexto se fija antes de cualquier lectura.
+        ComplexContext::setCurrentComplexId($this->complex->id);
+    }
+
+    protected function tearDown(): void
+    {
+        ComplexContext::clear();
+
+        parent::tearDown();
     }
 
     // ==================== Buildings ====================

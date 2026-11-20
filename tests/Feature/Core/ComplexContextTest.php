@@ -37,7 +37,7 @@ class ComplexContextTest extends CoreTestCase
         $this->assertNull(ComplexContext::getCurrentComplexId());
     }
 
-    public function test_global_scope_does_not_filter_by_the_complex_of_a_previous_request(): void
+    public function test_global_scope_exposes_nothing_without_a_resolved_complex(): void
     {
         $complexA = $this->makeComplex('Conjunto Alfa');
         $complexB = $this->makeComplex('Conjunto Bravo');
@@ -47,11 +47,23 @@ class ComplexContextTest extends CoreTestCase
 
         $this->handleComplexRequest($user);
 
-        // Sin contexto activo, el ambito global no puede seguir filtrando por
-        // el conjunto de la peticion anterior: se ven las unidades de ambos.
+        // Sin contexto resuelto, el ambito global no expone datos de ningun
+        // conjunto (spec S62): tampoco los de la peticion anterior.
         $this->flushSession();
 
-        $this->assertSame(2, PropertyUnit::count());
+        $this->assertSame(0, PropertyUnit::count());
+    }
+
+    public function test_with_a_resolved_complex_only_its_own_rows_are_exposed(): void
+    {
+        $complexA = $this->makeComplex('Conjunto Alfa');
+        $complexB = $this->makeComplex('Conjunto Bravo');
+        $this->makeUnit($complexA);
+        $this->makeUnit($complexB);
+
+        ComplexContext::setCurrentComplexId($complexA->id);
+
+        $this->assertSame(1, PropertyUnit::count());
     }
 
     public function test_resolve_active_complex_publishes_the_verified_complex_in_the_session(): void

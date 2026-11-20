@@ -129,6 +129,13 @@
 
 **S61.** Decision del usuario (verbatim): "Deuda transversal primero (ComplexContext)" y "Work units chicos, uno por entrega". El alcance de este work unit es la eliminacion del estado global de `ComplexContext`; no incluye el resto de la deuda transversal (desactivacion de conjunto con historial, estados no recuperables por API, grupos de auditoria fuera de catalogo, `notes` en titularidades y rol legacy `responsable`), que queda registrada como deuda para work units posteriores.
 
+**S62.** Sin conjunto resuelto, la aplicacion no expone datos de ningun conjunto. Contexto: el hallazgo `R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY` de la ronda nativa de T19 (L65), que el verificador independiente ya habia detectado como H1 (L64(e)) y demostro preexistente. El ambito global de `BelongsToComplex` hoy no filtra nada cuando no hay conjunto activo, con lo que una peticion sin contexto ve los datos de todos los conjuntos. Decision del usuario (verbatim): *Corregir H1 ahora dentro de T19*. Regla: en el ambito web/API, sin conjunto resuelto, el ambito global no devuelve ninguna fila.
+
+**S63.** La regla de S62 no altera el comportamiento de la consola: `app()->runningInConsole() && ! app()->runningUnitTests()` sigue sin filtrar, para que jobs, seeders y comandos artisan puedan operar sobre todos los conjuntos. Los tests que necesitan leer datos de mas de un conjunto lo declaran de forma explicita con `withoutComplexScope()`.
+
+**S64.** Pruebas de la regla: sin conjunto resuelto, una consulta a un modelo con el ambito global no devuelve filas; con conjunto resuelto, devuelve solo las de ese conjunto; en consola no se filtra. La prueba end-to-end de dos personas (L64, commit `a7f5f26`) se mantiene: la segunda persona no ve ni el conjunto de la primera ni los de otras.
+
+
 ---
 
 ## Tasks
@@ -167,7 +174,7 @@
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | ✅ Done (commit `1c9e0e8`, PR #19 mergeado a `stg`) |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | ✅ Done (commit `d09f1d1` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media | ✅ Done (commit `a491549` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
-| T19 | Contexto de conjunto activo sin estado global entre peticiones (`ComplexContext`) | T16 | Media | ✅ Done (commits `a24fb49` + `a7f5f26`; verificador independiente PASS en S58-S61) |
+| T19 | Contexto de conjunto activo sin estado global entre peticiones (`ComplexContext`) + aislamiento sin contexto (S62-S64) | T16 | Media | ⏳ En curso: H1 incorporado por decision del usuario (L66) |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | ✅ Done (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
