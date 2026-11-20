@@ -142,7 +142,7 @@
 | T16 | S31-S37 | Inline (rama `feat/core-transversal-suite`) | Commits `41d80f4` + `12d392d` + `4c1292e` + `31d8c82` + `2322632` + `f8b62bb` + `30590b4` + `61b1820` + `c3871ba` + `c6c8d22` + `957c5bd` |
 | T17 | S38-S41 | Workers (rama `feat/legacy-retirement`, desde `stg`) | Commits `c95aaf3` + `0945ae1` + `5b7c9bf` + `50ee10d` + `6c7098e` + `98b9999` + `0592fcd` + `26ed9ba` + `1e7b730` + `61710f0` |
 | T18 | S42-S49 | Inline (rama `feat/api-buildings-guard`, desde `stg`) | Commits `8b2b850` + `6607256` + `aeb5cc4` + `3ff75d6` + `8241b8a` |
-| T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
+| T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit `1c9e0e8` (RED 8 fallos, GREEN 9 pruebas) |
 | T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
 | T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
 
@@ -439,7 +439,23 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (g) **Estado al abrir:** sin RED observado todavia; T9 arranca con sus pruebas.
 
+**L52.** T9 (`property_unit_relations`) implementado y commiteado en `1c9e0e8` (rama `feat/physical-secondary`, base `stg` `1fcec86`).
+
+(a) **Alcance:** tabla `property_unit_relations` con `source_property_unit_id`, `target_property_unit_id`, `relation_type` (`annex`, `use_assignment`, `adjacent`), `valid_from`, `valid_until`, `status` y `notes`, mas el modelo `App\Models\PropertyUnitRelation` y los enums `PropertyUnitRelationType` y `PropertyUnitRelationStatus`. Sin `uuid`: el spec §3.7 no lista ese campo para esta tabla.
+
+(b) **Garantias a nivel de motor** (migracion `2026_11_19_000000_create_property_unit_relations_table.php`): FK compuesta `(residential_complex_id, <unidad>)` hacia `property_units (residential_complex_id, id)` en origen y destino (rechaza cruces entre conjuntos, ACE-C02/ACE-P07), `ON DELETE CASCADE` (una unidad eliminada se lleva sus relaciones), CHECK de no relacion consigo misma, CHECK de vigencia (`valid_until >= valid_from`), CHECK de dominio de `relation_type` y CHECK de dominio de `status`.
+
+(c) **TDD:** RED observado (8 pruebas, 8 fallos, `Class "App\Models\PropertyUnitRelation" not found`) y GREEN con **9 pruebas y 13 assertions** en `tests/Feature/PropertyUnitRelationsTest.php`. Casos cubiertos: alta valida; rechazo de una unidad de otro conjunto (FK compuesta); rechazo de la relacion consigo misma; rechazo de la vigencia invertida; `relation_type` fuera de dominio rechazado por el modelo (enum) y por el motor (CHECK, con insercion directa); parqueadero privado sin apartamento (ACE-S02); la relacion no crea titularidades (RN-S05); la relacion se elimina con su unidad origen.
+
+(d) **Verificacion:** suite completa **462 pruebas / 1.344 assertions** en verde contra PostgreSQL real `z360_test` (453 previas + 9 nuevas); Pint limpio en los cinco archivos nuevos (corrigio `fully_qualified_strict_types` en el modelo y `ordered_imports` en la prueba).
+
+(e) **Slice y revision:** el commit de codigo queda en **7 rutas y 439 lineas** contra la base `1fcec860d8bb9fba39ce827334bd348fce6482d6` (`stg`). El `assess` del proveedor devuelve **riesgo medio** con **`reviewDue: false`** (`under_budget`): no exige ronda nativa para esta generacion. El plan emitido es *writer self-verification*, sin verificador independiente.
+
+(f) **Riesgo:** `Risk: none` (esquema aditivo: crea una tabla nueva y su modelo; no altera datos existentes, ni contratos de otros, ni superficies HTTP).
+
 ## Delivery
+
+- **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`; T10 y T11 pendientes), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. T9 mide **7 rutas y 439 lineas** contra `stg`; su `assess` devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion.
 
 - T17 se desarrolla en la rama `feat/legacy-retirement`, creada desde `stg` (que ya integra T8 y T12-T16 mas la correccion del nombre de tabla `unidades`). Limite de slice medido al cerrar: **7.054 lineas en 40 rutas y 4 commits** sobre `stg` (`c95aaf3` alcance documental con las specs S38-S41 y la entrada L38, `0945ae1` unidad A: la API legacy re-apuntada al dominio nuevo con `auth` y conjunto activo en el servidor, `5b7c9bf` unidad B: la UI web `/units` y `/people` reescrita sobre `property_units` y `people`, `50ee10d` unidad C: retirada del legacy con la migracion `drop` y la guarda de escritura del documento de identidad), mas el commit documental de cierre (`6c7098e`, que solo anade registro) y la correccion de los dos hallazgos bloqueantes de la verificacion independiente (`0592fcd`, que vuelve atomico el documento de identidad y exige `person.view_document` para escribir cualquiera de sus dos campos). El diff acumulado contra `origin/main` (89 archivos y mas de 18.000 lineas) **no** es un slice entregable ni revisable: la entrega de T17 es **un PR propio con base `stg`**, nunca `main` con el acumulado. La cadena de entrega queda `feat/physical-structure` (T8) -> `feat/leases` (T13) -> `feat/employments` (T14) -> `feat/authorizations` (T15) -> `feat/core-transversal-suite` (T16) -> `feat/legacy-retirement` (T17), cada work unit con su propio PR y su `size:exception` cuando la unidad cohesiva supera el corte de ~400 lineas. T17 anade superficie HTTP (alta y baja de unidades y personas en la API, y las ocho pantallas web migradas al dominio nuevo), elimina las tres tablas legacy y cierra el defecto por el que `/api/v1/units` y `/api/v1/people` exponian datos sin autenticar. El PR queda manual porque en este entorno no hay `gh`, `hub`, `glab` ni token de API: la direccion es `https://github.com/thekrash22/ziruma360/pull/new/feat/legacy-retirement` con base `stg`. Entrega de T17: el usuario autorizo el push y se ejecuto (`origin/feat/legacy-retirement` en `0592fcd`; la rama lleva 5 commits de codigo mas los documentales).
 
