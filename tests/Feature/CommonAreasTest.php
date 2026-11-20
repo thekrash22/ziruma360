@@ -382,12 +382,31 @@ class CommonAreasTest extends TestCase
         $this->assertDatabaseCount('common_areas', 1);
     }
 
-    public function test_deleting_a_complex_removes_its_common_areas_and_assignments(): void
+    public function test_deleting_a_complex_removes_its_common_areas_when_there_are_no_assignments(): void
+    {
+        CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-08',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $this->unit($this->complex);
+
+        $this->complex->delete();
+
+        $this->assertDatabaseCount('common_areas', 0);
+        $this->assertDatabaseCount('common_property_exclusive_use_assignments', 0);
+        $this->assertDatabaseCount('property_units', 0);
+    }
+
+    public function test_a_complex_with_exclusive_use_assignments_cannot_be_deleted(): void
     {
         $area = CommonArea::create([
             'residential_complex_id' => $this->complex->id,
             'name' => 'Deposito comun',
-            'code' => 'DEP-COM-08',
+            'code' => 'DEP-COM-09',
             'area_type' => CommonAreaType::OTHER,
             'status' => CommonAreaStatus::ACTIVE,
         ]);
@@ -402,10 +421,65 @@ class CommonAreasTest extends TestCase
             'status' => ExclusiveUseAssignmentStatus::ACTIVE,
         ]);
 
-        $this->complex->delete();
+        DB::statement('SAVEPOINT complex_delete_guard');
 
-        $this->assertDatabaseCount('common_areas', 0);
-        $this->assertDatabaseCount('common_property_exclusive_use_assignments', 0);
+        try {
+            $this->complex->delete();
+            $this->fail('El conjunto con historial de asignaciones no debio borrarse.');
+        } catch (QueryException) {
+            // Restriccion esperada: el historial de asignaciones se conserva.
+            DB::statement('ROLLBACK TO SAVEPOINT complex_delete_guard');
+        }
+
+        $this->assertDatabaseCount('common_areas', 1);
+        $this->assertDatabaseCount('common_property_exclusive_use_assignments', 1);
+    }
+
+    public function test_a_common_area_or_unit_with_an_exclusive_use_assignment_cannot_be_deleted(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-10',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        DB::statement('SAVEPOINT common_area_delete_guard');
+
+        try {
+            $area->delete();
+            $this->fail('El area comun con historial de asignaciones no debio borrarse.');
+        } catch (QueryException) {
+            // Restriccion esperada: el historial de asignaciones se conserva.
+            DB::statement('ROLLBACK TO SAVEPOINT common_area_delete_guard');
+        }
+
+        DB::statement('SAVEPOINT property_unit_delete_guard');
+
+        try {
+            $unit->delete();
+            $this->fail('La unidad con historial de asignaciones no debio borrarse.');
+        } catch (QueryException) {
+            // Restriccion esperada: el historial de asignaciones se conserva.
+            DB::statement('ROLLBACK TO SAVEPOINT property_unit_delete_guard');
+        }
+
+        $this->assertDatabaseCount('common_property_exclusive_use_assignments', 1);
+        $this->assertDatabaseHas('common_property_exclusive_use_assignments', [
+            'id' => $assignment->id,
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
     }
 
     public function test_a_building_with_common_areas_cannot_be_deleted(): void

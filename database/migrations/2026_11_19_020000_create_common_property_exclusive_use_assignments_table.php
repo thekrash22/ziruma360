@@ -20,6 +20,9 @@ use Illuminate\Support\Facades\DB;
  *     (ACE-C02/ACE-P07)
  *   - CHECK de vigencia (valid_until >= valid_from)
  *   - CHECK de dominio de status
+ *   - ON DELETE RESTRICT en las FKs de conjunto, area comun y unidad: un bien
+ *     comun, una unidad o un conjunto con historial de asignaciones no se
+ *     borra: se desactiva y la asignacion se cierra por estado (ended/revoked)
  */
 return new class extends Migration
 {
@@ -31,7 +34,7 @@ return new class extends Migration
         DB::statement(<<<'SQL'
             CREATE TABLE common_property_exclusive_use_assignments (
                 id bigserial PRIMARY KEY,
-                residential_complex_id bigint NOT NULL REFERENCES residential_complexes(id) ON DELETE CASCADE,
+                residential_complex_id bigint NOT NULL REFERENCES residential_complexes(id) ON DELETE RESTRICT,
                 common_area_id bigint NOT NULL,
                 property_unit_id bigint NOT NULL,
                 valid_from date NOT NULL,
@@ -43,11 +46,11 @@ return new class extends Migration
                 CONSTRAINT common_property_exclusive_use_assignments_common_area_fk
                     FOREIGN KEY (residential_complex_id, common_area_id)
                     REFERENCES common_areas (residential_complex_id, id)
-                    ON DELETE CASCADE,
+                    ON DELETE RESTRICT,
                 CONSTRAINT common_property_exclusive_use_assignments_property_unit_fk
                     FOREIGN KEY (residential_complex_id, property_unit_id)
                     REFERENCES property_units (residential_complex_id, id)
-                    ON DELETE CASCADE,
+                    ON DELETE RESTRICT,
                 CONSTRAINT common_property_exclusive_use_assignments_validity_check
                     CHECK (valid_until IS NULL OR valid_until >= valid_from),
                 CONSTRAINT common_property_exclusive_use_assignments_status_check
