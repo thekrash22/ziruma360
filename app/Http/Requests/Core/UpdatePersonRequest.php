@@ -21,12 +21,17 @@ use Illuminate\Validation\Rule;
  * su existencia (ACE-C01). El permiso de edicion lo decide el catalogo
  * (`person.edit`).
  *
- * Guarda de escritura del documento de identidad (SEG-P01): escribir un
- * documento exige el permiso explicito `person.view_document`, el mismo que
- * lo expone en claro. Sin el, la peticion que trae un documento se rechaza
- * con 403 y no modifica nada; una peticion que solo trae el documento vacio
- * o nulo se acepta pero el documento no se escribe (el que ya tiene la
- * persona se conserva).
+ * Guarda de escritura del documento de identidad (SEG-P01): el documento de
+ * identidad es el PAR (`document_type`, `document_number`), no el numero
+ * suelto, y escribir cualquiera de los dos campos exige el permiso explicito
+ * `person.view_document`, el mismo que lo expone en claro. Sin el, la
+ * peticion se rechaza con 403 y no modifica nada. Tambien es un intento de
+ * escritura (borrado) anular cualquiera de los dos campos de una persona que
+ * ya tiene documento.
+ *
+ * Atomicidad del documento (RN-P02, T17): el documento es completo o no
+ * existe; un tipo sin numero (o un numero sin tipo) se rechaza con 422 en la
+ * aplicacion, antes de que la base de datos lo rechace con su CHECK.
  */
 class UpdatePersonRequest extends FormRequest
 {
@@ -73,7 +78,8 @@ class UpdatePersonRequest extends FormRequest
     /**
      * Los datos validados, sin el documento de identidad cuando el actor no
      * tiene el permiso explicito: sin el, el documento que ya tiene la
-     * persona se conserva (no se escribe ni se borra).
+     * persona se conserva (no se escribe ni se borra) y el campo prohibido
+     * nunca llega al `fill()`.
      */
     public function validated($key = null, $default = null)
     {
@@ -84,15 +90,18 @@ class UpdatePersonRequest extends FormRequest
         }
 
         if (! $this->canWriteIdentityDocument()) {
-            unset($validated['document_number']);
+            unset($validated['document_type'], $validated['document_number']);
         }
 
         return $validated;
     }
 
     /**
-     * El documento de identidad es unico por conjunto (indice unico parcial
-     * cuando tipo y numero estan presentes): la edicion no puede chocar con
+     * Atomicidad del documento de identidad y unicidad por conjunto.
+     *
+     * El documento es el par (`document_type`, `document_number`): tipo y
+     * numero van juntos o no hay documento, y el par es unico por conjunto
+     * (indice unico parcial), de modo que la edicion no puede chocar con
      * otra persona del mismo conjunto.
      */
     public function withValidator(Validator $validator): void
@@ -100,10 +109,55 @@ class UpdatePersonRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $person = $this->person();
 
-            $type = $this->input('document_type', $person->document_type?->value);
-            $number = $this->input('document_number', $person->document_number);
+            // Valores efectivos: lo que trae la peticion y, para el campo que
+            // no viene, lo que la persona ya tiene almacenado.
+            $type = $this->has('document_type')
+                ? $this->input('document_type')
+                : $person->document_type?->value;
 
-            if (! is_string($type) || ! is_string($number) || $type === '' || $number === '') {
+            $number = $this->has('document_number')
+                ? $this->input('document_number')
+                : $person->document_number;
+
+            $hasType = $this->documentFieldHasValue($type);
+            $hasNumber = $this->documentFieldHasValue($number);
+
+            // Atomicidad del documento: tipo y numero van juntos. Cuando la
+            // peticion anula uno de los dos, el otro tiene que anularse
+            // tambien (el documento se borra entero o no se borra).
+            if ($hasType && ! $hasNumber) {
+                if ($this->has('document_number')) {
+                    $validator->errors()->add(
+                        'document_type',
+                        'Para dejar el documento de identidad vacio, anula tambien el tipo de documento.'
+                    );
+                } else {
+                    $validator->errors()->add(
+                        'document_number',
+                        'El numero de documento es obligatorio cuando se informa el tipo de documento.'
+                    );
+                }
+            }
+
+            if ($hasNumber && ! $hasType) {
+                if ($this->has('document_type')) {
+                    $validator->errors()->add(
+                        'document_number',
+                        'Para dejar el documento de identidad vacio, anula tambien el numero de documento.'
+                    );
+                } else {
+                    $validator->errors()->add(
+                        'document_type',
+                        'El tipo de documento es obligatorio cuando se informa el numero de documento.'
+                    );
+                }
+            }
+
+            if (! $hasType || ! $hasNumber) {
+                return;
+            }
+
+            if (! is_string($type) || ! is_string($number)) {
                 return;
             }
 
@@ -204,22 +258,47 @@ class UpdatePersonRequest extends FormRequest
     }
 
     /**
-     * La peticion escribe un documento de identidad cuando trae un numero de
-     * documento con valor. Un valor vacio o nulo no es una escritura de
-     * documento.
+     * La peticion escribe un documento de identidad cuando trae con valor
+     * CUALQUIERA de los dos campos del par (`document_type` o
+     * `document_number`). Un valor vacio o nulo tambien es un intento de
+     * escritura cuando la persona almacenada tiene un documento: anularlo es
+     * escribirlo. Si la persona no tiene documento, un valor vacio o nulo no
+     * es ninguna escritura y el campo se ignora.
      */
     protected function writesIdentityDocument(): bool
     {
-        $number = $this->input('document_number');
-
-        if ($number === null) {
+        if (! $this->has('document_type') && ! $this->has('document_number')) {
             return false;
         }
 
-        if (is_string($number)) {
-            return trim($number) !== '';
+        if ($this->documentFieldHasValue($this->input('document_type'))
+            || $this->documentFieldHasValue($this->input('document_number'))) {
+            return true;
         }
 
-        return (bool) $number;
+        return $this->storedPersonHasDocument();
+    }
+
+    /**
+     * Si la persona almacenada tiene un documento de identidad.
+     */
+    protected function storedPersonHasDocument(): bool
+    {
+        $person = $this->person();
+
+        return $this->documentFieldHasValue($person->document_type?->value)
+            || $this->documentFieldHasValue($person->document_number);
+    }
+
+    /**
+     * Un valor de documento cuenta cuando no es nulo ni una cadena vacia.
+     */
+    protected function documentFieldHasValue(mixed $value): bool
+    {
+        if (is_string($value)) {
+            return trim($value) !== '';
+        }
+
+        return is_int($value) || is_float($value);
     }
 }

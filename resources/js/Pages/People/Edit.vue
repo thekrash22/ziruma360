@@ -53,7 +53,11 @@ const submit = () => {
     const payload: Record<string, string> = { ...data };
 
     if (!props.canViewDocument) {
+      // El documento de identidad es el par (tipo, numero) y escribir
+      // cualquiera de los dos campos exige `person.view_document`: sin el
+      // permiso no se envia ninguno de los dos y se conservan los actuales.
       delete payload.document_number;
+      delete payload.document_type;
     }
 
     return payload;
@@ -128,13 +132,17 @@ const submit = () => {
             </label>
             <select
               v-model="form.document_type"
-              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              :disabled="!props.canViewDocument"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             >
               <option value="">Sin tipo</option>
               <option v-for="type in props.documentTypes" :key="type.value" :value="type.value">
                 {{ type.label }}
               </option>
             </select>
+            <p v-if="!props.canViewDocument" class="mt-1 text-xs text-gray-500">
+              No tienes el permiso para ver el documento en claro: se conserva el actual.
+            </p>
             <p v-if="form.errors.document_type" class="mt-1 text-xs text-red-500">{{ form.errors.document_type }}</p>
           </div>
 

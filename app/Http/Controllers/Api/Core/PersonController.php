@@ -24,6 +24,15 @@ use Illuminate\Support\Facades\Gate;
  *
  * Esta controlador sirve tanto a la superficie `/api/v1/core/*` como al
  * alias legacy `/api/v1/people` (S39).
+ *
+ * La guarda de escritura del documento de identidad (SEG-P01) vive en los
+ * `FormRequest` (`StorePersonRequest` y `UpdatePersonRequest`): el
+ * documento de identidad es el par (`document_type`, `document_number`) y
+ * escribir cualquiera de los dos exige el permiso `person.view_document`,
+ * con un 403 y el mismo mensaje que la superficie web. La atomicidad del
+ * par (tipo y numero juntos, o ninguno) se valida tambien en los
+ * `FormRequest`, de modo que el error llega como 422 y no como un error del
+ * CHECK de la base.
  */
 class PersonController extends CoreController
 {

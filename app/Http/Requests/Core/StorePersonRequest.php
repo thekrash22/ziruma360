@@ -6,6 +6,7 @@ use App\Enums\ComplexPermission;
 use App\Enums\PersonStatus;
 use App\Enums\TipoDocumento;
 use App\Services\PermissionService;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -15,10 +16,15 @@ use Illuminate\Validation\Rule;
  * El conjunto activo lo resuelve el servidor (S9): el cliente nunca lo
  * envia. El permiso de alta lo decide el catalogo (`person.create`).
  *
- * Guarda de escritura del documento de identidad (SEG-P01): escribir un
- * documento exige el permiso explicito `person.view_document`, el mismo que
- * lo expone en claro. Sin el, la peticion se rechaza con 403 y no se crea
- * ninguna persona.
+ * Guarda de escritura del documento de identidad (SEG-P01): el documento de
+ * identidad es el PAR (`document_type`, `document_number`), no el numero
+ * suelto, y escribir cualquiera de los dos campos exige el permiso explicito
+ * `person.view_document`, el mismo que lo expone en claro. Sin el, la
+ * peticion se rechaza con 403 y no se crea ninguna persona.
+ *
+ * Atomicidad del documento (RN-P02, T17): el documento es completo o no
+ * existe; un tipo sin numero (o un numero sin tipo) se rechaza con 422 en la
+ * aplicacion, antes de que la base de datos lo rechace con su CHECK.
  */
 class StorePersonRequest extends FormRequest
 {
@@ -58,6 +64,55 @@ class StorePersonRequest extends FormRequest
             'status' => ['nullable', Rule::enum(PersonStatus::class)],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
+    }
+
+    /**
+     * Los datos validados, sin el documento de identidad cuando el actor no
+     * tiene el permiso explicito: sin el, el documento nunca llega al
+     * `fill()`.
+     */
+    public function validated($key = null, $default = null)
+    {
+        $validated = parent::validated($key, $default);
+
+        if ($key !== null || ! is_array($validated)) {
+            return $validated;
+        }
+
+        if (! $this->canWriteIdentityDocument()) {
+            unset($validated['document_type'], $validated['document_number']);
+        }
+
+        return $validated;
+    }
+
+    /**
+     * El documento de identidad es atomico: tipo y numero van juntos.
+     *
+     * Un tipo sin numero (o un numero sin tipo) no es un documento, y el
+     * CHECK de la base lo rechazaria: se responde 422 en la aplicacion para
+     * que el error sea de negocio y no un error del motor.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $hasType = $this->documentFieldHasValue($this->input('document_type'));
+            $hasNumber = $this->documentFieldHasValue($this->input('document_number'));
+
+            if ($hasType && ! $hasNumber) {
+                $validator->errors()->add(
+                    'document_number',
+                    'El numero de documento es obligatorio cuando se informa el tipo de documento.'
+                );
+            }
+
+            if ($hasNumber && ! $hasType) {
+                $validator->errors()->add(
+                    'document_type',
+                    'El tipo de documento es obligatorio cuando se informa el numero de documento.'
+                );
+            }
+        });
     }
 
     // RN-P02: antes de crear se busca por documento y, si ya existe una
@@ -105,22 +160,27 @@ class StorePersonRequest extends FormRequest
     }
 
     /**
-     * La peticion escribe un documento de identidad cuando trae un numero de
-     * documento con valor. Un valor vacio o nulo no es una escritura de
-     * documento (la UI lo envia siempre en el formulario de alta).
+     * La peticion escribe un documento de identidad cuando trae con valor
+     * CUALQUIERA de los dos campos del par (`document_type` o
+     * `document_number`). Un valor vacio o nulo no es una escritura: en un
+     * alta no hay documento almacenado que borrar, asi que el campo se
+     * ignora.
      */
     protected function writesIdentityDocument(): bool
     {
-        $number = $this->input('document_number');
+        return $this->documentFieldHasValue($this->input('document_type'))
+            || $this->documentFieldHasValue($this->input('document_number'));
+    }
 
-        if ($number === null) {
-            return false;
+    /**
+     * Un valor de documento cuenta cuando no es nulo ni una cadena vacia.
+     */
+    protected function documentFieldHasValue(mixed $value): bool
+    {
+        if (is_string($value)) {
+            return trim($value) !== '';
         }
 
-        if (is_string($number)) {
-            return trim($number) !== '';
-        }
-
-        return (bool) $number;
+        return is_int($value) || is_float($value);
     }
 }

@@ -33,7 +33,11 @@ use Inertia\Response;
  *
  * El documento de identidad se muestra enmascarado (solo los ultimos cuatro
  * caracteres) salvo que el actor tenga el permiso explicito
- * `person.view_document` (SEG-P01).
+ * `person.view_document` (SEG-P01). Ese permiso gobierna ademas la ESCRITURA
+ * del documento: el documento de identidad es el par (`document_type`,
+ * `document_number`) y escribir cualquiera de los dos campos (o anularlos en
+ * una persona que ya tiene documento) exige el permiso, con el mismo
+ * mensaje y el mismo 403 que la API.
  */
 class PersonController extends Controller
 {
@@ -97,6 +101,7 @@ class PersonController extends Controller
         return Inertia::render('People/Create', [
             'documentTypes' => $this->documentTypes(),
             'statuses' => $this->statuses(),
+            'canViewDocument' => PermissionService::has($user, ComplexPermission::PERSON_VIEW_DOCUMENT, $complexId),
         ]);
     }
 
@@ -121,7 +126,7 @@ class PersonController extends Controller
         // Guarda de escritura del documento de identidad (SEG-P01): sin el
         // permiso explicito no se escribe un documento, y la peticion que
         // trae uno se rechaza con 403 sin crear nada.
-        $this->assertCanWriteIdentityDocument($request, $user, $complexId);
+        $this->assertCanWriteIdentityDocument($request, $user, $complexId, null);
 
         try {
             $validated = $this->validatePerson($request, $complexId, null, true);
@@ -215,7 +220,7 @@ class PersonController extends Controller
         );
 
         // Guarda de escritura del documento de identidad (SEG-P01).
-        $this->assertCanWriteIdentityDocument($request, $user, $complexId);
+        $this->assertCanWriteIdentityDocument($request, $user, $complexId, $person);
 
         try {
             $validated = $this->validatePerson($request, $complexId, $person);
@@ -224,10 +229,10 @@ class PersonController extends Controller
         }
 
         // Sin el permiso explicito el documento de identidad no se modifica
-        // (SEG-P01): la UI no lo expone en claro y una peticion que trae un
-        // documento ya fue rechazada con 403 mas arriba.
+        // (SEG-P01): la UI no lo expone en claro y una peticion que escribe
+        // el documento ya fue rechazada con 403 mas arriba.
         if (! PermissionService::has($user, ComplexPermission::PERSON_VIEW_DOCUMENT, $complexId)) {
-            unset($validated['document_number']);
+            unset($validated['document_type'], $validated['document_number']);
         }
 
         $person->fill($validated)->save();
@@ -333,16 +338,21 @@ class PersonController extends Controller
     /**
      * Guarda de escritura del documento de identidad (SEG-P01).
      *
-     * Escribir el documento exige el permiso explicito `person.view_document`,
-     * el mismo que lo expone en claro: sin el, la peticion que trae un
-     * documento se rechaza con 403 y no se persiste nada. Una peticion que
-     * solo trae el documento vacio o nulo no es una escritura de documento y
-     * se acepta, pero el documento no se escribe (el que ya tiene la persona
-     * se conserva).
+     * El documento de identidad es el par (`document_type`, `document_number`):
+     * escribir cualquiera de los dos campos exige el permiso explicito
+     * `person.view_document`, el mismo que lo expone en claro. Sin el, la
+     * peticion se rechaza con 403 y no se persiste nada. Anular cualquiera de
+     * los dos campos en una persona que ya tiene documento tambien es una
+     * escritura (un borrado) y se rechaza con el mismo 403 y el mismo
+     * mensaje que la API.
      */
-    protected function assertCanWriteIdentityDocument(Request $request, User $user, int $complexId): void
-    {
-        if (! $this->writesIdentityDocument($request)) {
+    protected function assertCanWriteIdentityDocument(
+        Request $request,
+        User $user,
+        int $complexId,
+        ?Person $person = null
+    ): void {
+        if (! $this->writesIdentityDocument($request, $person)) {
             return;
         }
 
@@ -355,20 +365,44 @@ class PersonController extends Controller
 
     /**
      * Si la peticion escribe un documento de identidad.
+     *
+     * Es una escritura cuando alguno de los dos campos del par viene con
+     * valor. Un valor nulo o vacio tambien es una escritura (borrado) si la
+     * persona almacenada tiene un documento; si no lo tiene, no hay
+     * escritura y el campo se ignora.
      */
-    protected function writesIdentityDocument(Request $request): bool
+    protected function writesIdentityDocument(Request $request, ?Person $person = null): bool
     {
-        $number = $request->input('document_number');
+        $typePresent = $request->has('document_type');
+        $numberPresent = $request->has('document_number');
 
-        if ($number === null) {
+        if (! $typePresent && ! $numberPresent) {
             return false;
         }
 
-        if (is_string($number)) {
-            return trim($number) !== '';
+        if ($this->documentFieldHasValue($request->input('document_type'))
+            || $this->documentFieldHasValue($request->input('document_number'))) {
+            return true;
         }
 
-        return (bool) $number;
+        if ($person === null) {
+            return false;
+        }
+
+        return $this->documentFieldHasValue($person->document_type?->value)
+            || $this->documentFieldHasValue($person->document_number);
+    }
+
+    /**
+     * Un valor de documento cuenta cuando no es nulo ni una cadena vacia.
+     */
+    protected function documentFieldHasValue(mixed $value): bool
+    {
+        if (is_string($value)) {
+            return trim($value) !== '';
+        }
+
+        return is_int($value) || is_float($value);
     }
 
     /**
@@ -402,6 +436,8 @@ class PersonController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
+        $this->assertIdentityDocumentIsAtomic($request, $person);
+
         $duplicate = $this->findByDocument($complexId, $validated, $person);
 
         if ($duplicate !== null && ! $allowDuplicate) {
@@ -411,6 +447,53 @@ class PersonController extends Controller
         }
 
         return $validated;
+    }
+
+    /**
+     * El documento de identidad es atomico (RN-P02, T17): tipo y numero van
+     * juntos, porque es el par el que identifica a la persona.
+     *
+     * Se valida con los valores EFECTIVOS: lo que trae la peticion y, para
+     * el campo que no viene, lo que la persona ya tiene almacenado. Asi el
+     * error llega como 422 y no como un error del CHECK de la base.
+     */
+    protected function assertIdentityDocumentIsAtomic(Request $request, ?Person $person = null): void
+    {
+        $type = $request->has('document_type')
+            ? $request->input('document_type')
+            : $person?->document_type?->value;
+
+        $number = $request->has('document_number')
+            ? $request->input('document_number')
+            : $person?->document_number;
+
+        $hasType = $this->documentFieldHasValue($type);
+        $hasNumber = $this->documentFieldHasValue($number);
+
+        $errors = [];
+
+        // Atomicidad del documento: tipo y numero van juntos. Cuando la
+        // peticion anula uno de los dos, el otro tiene que anularse tambien
+        // (el documento se borra entero o no se borra).
+        if ($hasType && ! $hasNumber) {
+            if ($request->has('document_number')) {
+                $errors['document_type'] = 'Para dejar el documento de identidad vacio, anula tambien el tipo de documento.';
+            } else {
+                $errors['document_number'] = 'El numero de documento es obligatorio cuando se informa el tipo de documento.';
+            }
+        }
+
+        if ($hasNumber && ! $hasType) {
+            if ($request->has('document_type')) {
+                $errors['document_number'] = 'Para dejar el documento de identidad vacio, anula tambien el numero de documento.';
+            } else {
+                $errors['document_type'] = 'El tipo de documento es obligatorio cuando se informa el numero de documento.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**

@@ -24,6 +24,11 @@ use App\Models\User;
  *   y no persiste nada (ni crea la persona ni modifica la existente);
  * - un actor con el permiso puede escribirlo y leerlo en claro.
  *
+ * El documento de identidad es el PAR (`document_type`, `document_number`):
+ * escribir CUALQUIERA de los dos campos exige el permiso. Por eso los casos
+ * aislados estan cubiertos: el tipo solo, el tipo anulado y el numero
+ * vacio sobre una persona que ya tiene documento.
+ *
  * Las afirmaciones son sobre la interfaz publica: codigo de estado, cuerpo de
  * la respuesta y, cuando la peticion se rechaza, que los datos y los
  * contadores quedan sin cambios.
@@ -133,13 +138,118 @@ class PersonDocumentWriteGuardTest extends CoreTestCase
                 'full_name' => 'Ana Torres',
                 'document_number' => null,
             ])
-            ->assertRedirect('/people');
+            ->assertForbidden();
 
         $this->assertSame(
             '12345678',
             $person->fresh()->document_number,
             'Sin el permiso el documento existente no se modifica.'
         );
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_create_a_person_with_only_a_document_type(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_CREATE,
+        ]);
+
+        $before = Person::withoutGlobalScope('complex')->count();
+
+        $this->actingAs($actor)
+            ->post('/people', [
+                'full_name' => 'Ana Torres',
+                'document_type' => 'CC',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(
+            $before,
+            Person::withoutGlobalScope('complex')->count(),
+            'El rechazo no debe crear ninguna persona.'
+        );
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_change_only_the_document_type(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->put("/people/{$person->uuid}", [
+                'full_name' => 'Ana Torres',
+                'document_type' => 'CE',
+            ])
+            ->assertForbidden();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CC', $fresh->document_type?->value, 'El tipo de documento no debe escribirse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El documento no debe escribirse.');
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_clear_only_the_document_type(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->put("/people/{$person->uuid}", [
+                'full_name' => 'Ana Torres',
+                'document_type' => null,
+            ])
+            ->assertForbidden();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CC', $fresh->document_type?->value, 'El tipo de documento no debe anularse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El documento no debe escribirse.');
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_clear_the_document_number_with_an_empty_value(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->put("/people/{$person->uuid}", [
+                'full_name' => 'Ana Torres',
+                'document_number' => '',
+            ])
+            ->assertForbidden();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CC', $fresh->document_type?->value, 'El tipo de documento no debe anularse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El documento no debe borrarse.');
     }
 
     public function test_an_actor_with_the_document_permission_can_write_and_read_the_identity_document_in_clear(): void
@@ -167,6 +277,34 @@ class PersonDocumentWriteGuardTest extends CoreTestCase
             ->get('/people')
             ->assertOk()
             ->assertSee('12345678', false);
+    }
+
+    public function test_an_actor_with_the_document_permission_can_change_only_the_document_type(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+            ComplexPermission::PERSON_VIEW_DOCUMENT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->put("/people/{$person->uuid}", [
+                'full_name' => 'Ana Torres',
+                'document_type' => 'CE',
+            ])
+            ->assertRedirect('/people');
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CE', $fresh->document_type?->value, 'El tipo de documento debe escribirse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El numero de documento se conserva.');
     }
 
     /*
@@ -251,6 +389,135 @@ class PersonDocumentWriteGuardTest extends CoreTestCase
             ->getJson("/api/v1/people/{$person->uuid}")
             ->assertOk()
             ->assertJsonPath('data.document_number', '12345678');
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_create_a_person_with_only_a_document_type_through_the_api(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_CREATE,
+        ]);
+
+        $before = Person::withoutGlobalScope('complex')->count();
+
+        $this->actingAs($actor)
+            ->postJson('/api/v1/people', [
+                'full_name' => 'Ana Torres',
+                'document_type' => 'CC',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(
+            $before,
+            Person::withoutGlobalScope('complex')->count(),
+            'El rechazo no debe crear ninguna persona.'
+        );
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_change_only_the_document_type_through_the_api(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->putJson("/api/v1/people/{$person->uuid}", [
+                'document_type' => 'CE',
+            ])
+            ->assertForbidden();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CC', $fresh->document_type?->value, 'El tipo de documento no debe escribirse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El documento no debe escribirse.');
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_clear_only_the_document_type_through_the_api(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->putJson("/api/v1/people/{$person->uuid}", [
+                'document_type' => null,
+            ])
+            ->assertForbidden();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CC', $fresh->document_type?->value, 'El tipo de documento no debe anularse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El documento no debe escribirse.');
+    }
+
+    public function test_an_actor_without_the_document_permission_cannot_clear_the_document_number_with_an_empty_value_through_the_api(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->putJson("/api/v1/people/{$person->uuid}", [
+                'document_number' => '',
+            ])
+            ->assertForbidden();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CC', $fresh->document_type?->value, 'El tipo de documento no debe anularse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El documento no debe borrarse.');
+    }
+
+    public function test_an_actor_with_the_document_permission_can_change_only_the_document_type_through_the_api(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$actor] = $this->makeActor($complex, [
+            ComplexPermission::PERSON_VIEW,
+            ComplexPermission::PERSON_EDIT,
+            ComplexPermission::PERSON_VIEW_DOCUMENT,
+        ]);
+
+        $person = Person::factory()->forComplex($complex)->create([
+            'full_name' => 'Ana Torres',
+            'document_type' => 'CC',
+            'document_number' => '12345678',
+        ]);
+
+        $this->actingAs($actor)
+            ->putJson("/api/v1/people/{$person->uuid}", [
+                'document_type' => 'CE',
+            ])
+            ->assertOk();
+
+        $fresh = $person->fresh();
+
+        $this->assertSame('CE', $fresh->document_type?->value, 'El tipo de documento debe escribirse.');
+        $this->assertSame('12345678', $fresh->document_number, 'El numero de documento se conserva.');
     }
 
     /*
