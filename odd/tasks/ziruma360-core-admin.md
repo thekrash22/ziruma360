@@ -565,9 +565,19 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (e) **Riesgo:** `Risk: none` (el work unit es aditivo en esquema, sin superficie HTTP ni cambios en datos existentes).
 
+**L62.** Entrega de T9-T11 ejecutada por el usuario: push de `feat/physical-secondary`, PR **#19** con base `stg` y merge (`7a0d8cb`, "Merge pull request #19 from thekrash22/feat/physical-secondary"), y limpieza de la rama en remoto tras el merge.
+
+(a) **Estado tras la entrega.** `origin/stg` avanza de `1fcec86` a `7a0d8cb` con el merge del PR #19; `24bba5a` (commit documental de cierre) es ancestro de `origin/stg`. `stg` local actualizada con `merge --ff-only origin/stg` y este registro documental vive en ella.
+
+(b) **Rama local.** `feat/physical-secondary` se conserva en `24bba5a` como referencia, sin upstream (la rama remota ya no existe) y con el tracking desvinculado.
+
+(c) **Verificacion de la entrega.** `origin/stg` contiene las 5 migraciones del work unit (relaciones entre unidades, areas comunes, asignaciones de uso exclusivo, instalaciones y espacios de parqueadero) con sus garantias de motor (FKs compuestas, CHECKs, indices unicos, triggers de inmutabilidad y restriccion de exclusion GiST), los modelos y enums correspondientes, las 1.283 lineas de pruebas del work unit y la documentacion.
+
+(d) **Deuda que hereda el work unit siguiente (API de estructura fisica secundaria).** El cierre de una asignacion de uso exclusivo debe exigir `valid_until` en la validacion de la peticion (hoy el motor lo permite y el area queda bloqueada hasta rellenar la fecha); los hallazgos informativos `R1-EXCLUSIVE-CLOSURE-BLOCKS-REUSE` y `R3-TERMINAL-ASSIGNMENT-UNBOUNDED` quedan abiertos como trabajo de la API.
+
 ## Delivery
 
-- **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. El slice acumulado mide **20 rutas y 1.886 lineas** contra `stg` (T9: 5/396, T10: 8/848, T11: 7/642); el `assess` del proveedor sobre ese slice devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion. El push y la apertura de los PRs quedan como decision del usuario.
+- **Cadena T9-T11 (estructura fisica secundaria) — ENTREGADA.** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), siete commits de correccion de la revision nativa (`58a59a4`, `a32b4d2`, `1921625`, `fd34e62`, `c54264b`, `b71ec67`, `fc99688`) y el commit documental de cierre (`24bba5a`). La entrega se hizo en **un solo PR con base `stg`** (PR **#19**, `feat/physical-secondary` -> `stg`), **mergeado** con el commit `7a0d8cb`, y la rama en remoto fue eliminada por el usuario tras el merge. El slice final contra `stg` mide **23 rutas y 2.743 lineas**; la revision nativa del slice T10+T11 quedo **APROBADA** con la autoridad `review-a8e70d38589df9c4` (quemada, `gentle-ai.review-acknowledged/v1`), tras corregir seis hallazgos CRITICAL de cascada, solapamiento, inmutabilidad y concurrencia (L55-L61).
 
 - **Espejo Engram resuelto.** El topic `odd/ziruma360-core-admin/tasks` quedo guardado en Engram (proyecto `ziruma360`, observacion 852) con el resumen de T9-T11. Para eso hubo que ejecutar `engram init ziruma360` en la raiz del repositorio: el directorio tenia historial bajo dos nombres de proyecto (`360` y `ziruma360`) y Engram rechazaba toda escritura por ambiguedad. `.engram/config.json` es estado local de la herramienta y esta en `.gitignore`, no se versiona.
 
