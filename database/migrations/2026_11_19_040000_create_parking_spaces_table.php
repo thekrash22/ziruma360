@@ -26,6 +26,9 @@ use Illuminate\Support\Facades\DB;
  *     numerados no se borra, se archiva
  *   - trigger BEFORE DELETE y BEFORE TRUNCATE: el espacio numerado es
  *     historial y no se borra
+ *   - trigger BEFORE UPDATE que deja inmutables el identificador, la fecha de
+ *     creacion, el conjunto, la instalacion y el numero: el estado y las notas
+ *     si se pueden actualizar
  */
 return new class extends Migration
 {
@@ -81,6 +84,33 @@ return new class extends Migration
             BEFORE TRUNCATE ON parking_spaces
             FOR EACH STATEMENT EXECUTE FUNCTION z360_forbid_parking_space_delete()
         SQL);
+
+        // El espacio es historial: su numero y su instalacion no se reescriben.
+        // El estado (active/inactive) y las notas si se actualizan.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION z360_guard_parking_space_update()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.id IS DISTINCT FROM OLD.id
+                    OR NEW.created_at IS DISTINCT FROM OLD.created_at
+                    OR NEW.residential_complex_id IS DISTINCT FROM OLD.residential_complex_id
+                    OR NEW.parking_facility_id IS DISTINCT FROM OLD.parking_facility_id
+                    OR NEW.number IS DISTINCT FROM OLD.number THEN
+                    RAISE EXCEPTION
+                        'el espacio de parqueadero es inmutable: el numero y la instalacion no se reescriben'
+                        USING ERRCODE = 'restrict_violation';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER parking_spaces_guard_update
+            BEFORE UPDATE ON parking_spaces
+            FOR EACH ROW EXECUTE FUNCTION z360_guard_parking_space_update()
+        SQL);
     }
 
     /**
@@ -90,5 +120,6 @@ return new class extends Migration
     {
         DB::statement('DROP TABLE IF EXISTS parking_spaces');
         DB::statement('DROP FUNCTION IF EXISTS z360_forbid_parking_space_delete()');
+        DB::statement('DROP FUNCTION IF EXISTS z360_guard_parking_space_update()');
     }
 };

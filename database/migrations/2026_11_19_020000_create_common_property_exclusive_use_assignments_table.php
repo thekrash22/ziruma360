@@ -29,8 +29,9 @@ use Illuminate\Support\Facades\DB;
  *     historial es inmutable y se cierra por estado, nunca se borra
  *   - trigger BEFORE TRUNCATE que impide truncar la tabla: un TRUNCATE no
  *     dispara los triggers de fila
- *   - trigger BEFORE UPDATE que deja inmutables el beneficiario, la vigencia y
- *     la referencia documental: solo se admite el cierre por estado
+ *   - trigger BEFORE UPDATE que deja inmutables el identificador, la fecha de
+ *     creacion, el beneficiario, la vigencia y la referencia documental: solo
+ *     se admite el cierre por estado
  */
 return new class extends Migration
 {
@@ -108,7 +109,9 @@ return new class extends Migration
             CREATE OR REPLACE FUNCTION z360_guard_exclusive_use_assignment_update()
             RETURNS trigger AS $$
             BEGIN
-                IF NEW.residential_complex_id IS DISTINCT FROM OLD.residential_complex_id
+                IF NEW.id IS DISTINCT FROM OLD.id
+                    OR NEW.created_at IS DISTINCT FROM OLD.created_at
+                    OR NEW.residential_complex_id IS DISTINCT FROM OLD.residential_complex_id
                     OR NEW.common_area_id IS DISTINCT FROM OLD.common_area_id
                     OR NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
                     OR NEW.valid_from IS DISTINCT FROM OLD.valid_from

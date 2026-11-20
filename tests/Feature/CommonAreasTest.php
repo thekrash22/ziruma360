@@ -566,6 +566,33 @@ class CommonAreasTest extends TestCase
         DB::statement('TRUNCATE common_property_exclusive_use_assignments');
     }
 
+    public function test_the_exclusive_use_assignment_identity_cannot_be_rewritten(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-17',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        DB::table('common_property_exclusive_use_assignments')
+            ->where('id', $assignment->id)
+            ->update(['created_at' => '2020-01-01 00:00:00']);
+    }
+
     public function test_deleting_a_complex_removes_its_common_areas_when_there_are_no_assignments(): void
     {
         CommonArea::create([

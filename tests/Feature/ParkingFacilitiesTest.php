@@ -175,6 +175,42 @@ class ParkingFacilitiesTest extends TestCase
         DB::statement('TRUNCATE parking_spaces');
     }
 
+    public function test_a_parking_space_number_cannot_be_rewritten(): void
+    {
+        $facility = $this->facility($this->complex);
+
+        $space = ParkingSpace::create([
+            'residential_complex_id' => $this->complex->id,
+            'parking_facility_id' => $facility->id,
+            'number' => 'P-04',
+            'status' => ParkingSpaceStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $space->update(['number' => 'P-05']);
+    }
+
+    public function test_a_parking_space_status_and_notes_can_still_change(): void
+    {
+        $facility = $this->facility($this->complex);
+
+        $space = ParkingSpace::create([
+            'residential_complex_id' => $this->complex->id,
+            'parking_facility_id' => $facility->id,
+            'number' => 'P-06',
+            'status' => ParkingSpaceStatus::ACTIVE,
+        ]);
+
+        $space->update([
+            'status' => ParkingSpaceStatus::INACTIVE,
+            'notes' => 'Espacio reservado para la mudanza',
+        ]);
+
+        $this->assertSame(ParkingSpaceStatus::INACTIVE, $space->fresh()->status);
+        $this->assertSame('Espacio reservado para la mudanza', $space->fresh()->notes);
+    }
+
     public function test_the_database_rejects_an_operational_capacity_greater_than_the_total_capacity(): void
     {
         $this->expectException(QueryException::class);
