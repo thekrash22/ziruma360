@@ -16,14 +16,31 @@ class UpdateResidentialComplexRequest extends FormRequest
      * Determine if the user is authorized to make this request.
      *
      * El conjunto ya viene resuelto y acotado al alcance del actor por el
-     * middleware; la escritura exige `complex.edit` sobre ese conjunto.
+     * middleware; la escritura exige `complex.edit` sobre ese conjunto. Los
+     * datos de gobierno (`settings` y `legal_identifier`) exigen ademas su
+     * propio permiso: editar el conjunto no habilita a reescribirlos.
      */
     public function authorize(): bool
     {
         $complex = $this->attributes->get('residential_complex');
 
-        return $complex instanceof ResidentialComplex
-            && Gate::allows('update', $complex);
+        if (! $complex instanceof ResidentialComplex || ! Gate::allows('update', $complex)) {
+            return false;
+        }
+
+        if ($this->touchesGovernance()) {
+            return Gate::allows('updateGovernance', $complex);
+        }
+
+        return true;
+    }
+
+    /**
+     * El payload escribe datos de gobierno del conjunto.
+     */
+    private function touchesGovernance(): bool
+    {
+        return $this->has('settings') || $this->has('legal_identifier');
     }
 
     /**

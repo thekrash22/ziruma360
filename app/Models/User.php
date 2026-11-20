@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -78,7 +79,13 @@ class User extends Authenticatable
             ->where('residential_complex_id', $complexId)
             ->where('status', 'active')
             ->whereHas('roles', function ($query) {
-                $query->where('key', 'complex_admin');
+                $query->where('key', 'complex_admin')
+                    ->where(fn (Builder $roles) => $roles
+                        ->whereNull('membership_roles.valid_from')
+                        ->orWhere('membership_roles.valid_from', '<=', now()))
+                    ->where(fn (Builder $roles) => $roles
+                        ->whereNull('membership_roles.valid_until')
+                        ->orWhere('membership_roles.valid_until', '>=', now()));
             })
             ->exists();
     }
@@ -86,15 +93,23 @@ class User extends Authenticatable
     /**
      * Check if user is platform admin.
      *
-     * El rol de plataforma solo se reconoce con una membresia **activa**: una
-     * membresia suspendida o revocada no otorga poder de plataforma.
+     * El rol de plataforma solo se reconoce con una membresia **activa** y una
+     * asignacion de rol **vigente**: una membresia suspendida o revocada, y
+     * una asignacion vencida o todavia no vigente, no otorgan poder de
+     * plataforma.
      */
     public function isPlatformAdmin(): bool
     {
         return $this->activeMemberships()
             ->whereHas('roles', function ($query) {
                 $query->where('key', 'platform_admin')
-                    ->whereNull('residential_complex_id');
+                    ->whereNull('roles.residential_complex_id')
+                    ->where(fn (Builder $roles) => $roles
+                        ->whereNull('membership_roles.valid_from')
+                        ->orWhere('membership_roles.valid_from', '<=', now()))
+                    ->where(fn (Builder $roles) => $roles
+                        ->whereNull('membership_roles.valid_until')
+                        ->orWhere('membership_roles.valid_until', '>=', now()));
             })
             ->exists();
     }

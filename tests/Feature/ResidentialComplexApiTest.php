@@ -6,6 +6,7 @@ use App\Enums\ComplexPermission;
 use App\Enums\MembershipStatus;
 use App\Enums\ResidentialComplexStatus;
 use App\Enums\SystemRole;
+use App\Models\ResidentialComplex;
 use App\Models\ResidentialComplexMembership;
 use App\Models\Role;
 use App\Models\User;
@@ -570,6 +571,166 @@ class ResidentialComplexApiTest extends CoreTestCase
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
+    // ------------------------------------------- vigencia del rol de plataforma
+
+    public function test_platform_admin_with_an_expired_role_assignment_does_not_see_the_whole_catalog(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        // La asignacion del rol de plataforma vencio: ya no concede el
+        // catalogo completo.
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+
+        $uuids = array_column($response->json('data'), 'uuid');
+        $this->assertContains($mine->uuid, $uuids);
+        $this->assertNotContains($other->uuid, $uuids);
+    }
+
+    public function test_platform_admin_with_an_expired_role_assignment_cannot_create_a_building(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+    }
+
+    public function test_platform_admin_with_a_pending_role_assignment_cannot_create_a_building(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_from' => now()->addDay()]
+        );
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+    }
+
+    public function test_platform_admin_with_an_expired_role_assignment_cannot_archive_another_complex(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$other->uuid}")
+            ->assertNotFound();
+
+        $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $other->fresh()->status);
+    }
+
+    // ------------------------------------------------- escritura de gobierno
+
+    public function test_member_with_only_edit_permission_cannot_write_the_settings(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        [$user, $membership] = $this->makeMemberWithCustomRole($complex, [
+            ComplexPermission::COMPLEX_VIEW,
+            ComplexPermission::COMPLEX_EDIT,
+        ]);
+
+        $original = $complex->settings;
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+                'settings' => ['regional' => ['timezone' => 'America/Bogota']],
+            ])
+            ->assertForbidden();
+
+        $this->assertSame($original, $complex->fresh()->settings);
+    }
+
+    public function test_member_with_only_edit_permission_cannot_write_the_legal_identifier(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        [$user, $membership] = $this->makeMemberWithCustomRole($complex, [
+            ComplexPermission::COMPLEX_VIEW,
+            ComplexPermission::COMPLEX_EDIT,
+        ]);
+
+        $original = $complex->legal_identifier;
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['legal_identifier' => 'NIT-EDITADO'])
+            ->assertForbidden();
+
+        $this->assertSame($original, $complex->fresh()->legal_identifier);
+    }
+
+    public function test_complex_admin_can_write_the_governance_data(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+                'legal_identifier' => 'NIT-900',
+                'settings' => ['regional' => ['timezone' => 'America/Bogota']],
+            ])
+            ->assertOk();
+
+        $fresh = $complex->fresh();
+        $this->assertSame('NIT-900', $fresh->legal_identifier);
+        $this->assertSame(
+            ['regional' => ['timezone' => 'America/Bogota']],
+            $fresh->settings
+        );
+    }
+
+    /**
+     * Miembro activo con un rol propio que lleva solo los permisos indicados.
+     *
+     * @param  array<int, ComplexPermission>  $permissions
+     * @return array{0: User, 1: ResidentialComplexMembership}
+     */
+    private function makeMemberWithCustomRole(ResidentialComplex $complex, array $permissions): array
+    {
+        $user = User::factory()->create();
+
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        $role = Role::factory()->create();
+        foreach ($permissions as $permission) {
+            $role->grantPermission($permission);
+        }
+        $membership->roles()->attach($role->id);
+
+        return [$user, $membership];
+    }
+
     private function payload(array $overrides = []): array
     {
         return array_merge([

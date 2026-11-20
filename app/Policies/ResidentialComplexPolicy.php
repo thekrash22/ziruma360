@@ -61,6 +61,19 @@ class ResidentialComplexPolicy
     }
 
     /**
+     * Escritura de los datos de gobierno del conjunto (`settings` y
+     * `legal_identifier`).
+     *
+     * Editar el conjunto no habilita a reescribir su gobierno: esa escritura
+     * exige su propio permiso, igual que la lectura.
+     */
+    public function updateGovernance(User $user, ResidentialComplex $complex): bool
+    {
+        return $user->isPlatformAdmin()
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
+    }
+
+    /**
      * Baja del conjunto: se archiva, nunca se borra.
      */
     public function archive(User $user, ResidentialComplex $complex): bool
@@ -70,12 +83,21 @@ class ResidentialComplexPolicy
 
     /**
      * Alta de conjuntos: permiso de plataforma.
+     *
+     * La asignacion del rol de plataforma debe estar vigente: una asignacion
+     * vencida o pendiente no habilita el alta.
      */
     public function create(User $user): bool
     {
         return $user->activeMemberships()
             ->whereHas('roles', function ($query) {
-                $query->whereNull('residential_complex_id')
+                $query->whereNull('roles.residential_complex_id')
+                    ->where(fn (Builder $roles) => $roles
+                        ->whereNull('membership_roles.valid_from')
+                        ->orWhere('membership_roles.valid_from', '<=', now()))
+                    ->where(fn (Builder $roles) => $roles
+                        ->whereNull('membership_roles.valid_until')
+                        ->orWhere('membership_roles.valid_until', '>=', now()))
                     ->whereHas('permissions', function ($permissions) {
                         $permissions->where('permission_key', ComplexPermission::COMPLEX_CREATE->value);
                     });
