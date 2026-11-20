@@ -121,6 +121,21 @@
 
 **S57.** Pruebas de dominio de las cuatro tablas nuevas: `CHECK` de vigencia, dominio de `relation_type` y de `area_type`, unicidad de `code` de area comun por conjunto, una relacion no puede ser consigo misma y una asignacion en uso exclusivo no puede apuntar a una unidad de otro conjunto.
 
+**S58.** El conjunto activo resuelto en una peticion no puede quedar disponible en la peticion siguiente. Origen: deuda transversal registrada en L37e, L39 y L44, con el codigo actual de `app/Services/ComplexContext.php`: la clase mantiene `private static ?int $testComplexId`, `setCurrentComplexId()` escribe ahi **ademas** de la sesion (y lo llama el middleware `ResolveActiveComplex` tambien en produccion), y `getCurrentComplexId()` lee ese estatico **con prioridad sobre la sesion**. En un worker persistente (Octane) el contexto de un usuario sobrevive a la peticion de otro usuario y el global scope `BelongsToComplex` filtra por un conjunto ajeno.
+
+**S59.** `ComplexContext` no debe mantener estado global entre peticiones: la unica fuente del conjunto activo es la sesion del usuario. La API publica de la clase (`getCurrentComplexId`, `setCurrentComplexId`, `getCurrentComplex`, `hasActiveComplex`, `resolveFromRequest`, `clear`) se mantiene para no cambiar los ocho call sites de `app/` (middleware, policies, modelos y servicios de auditoria y permisos).
+
+**S60.** El conjunto verificado por `ResolveActiveComplex` debe seguir disponible para el resto de la peticion (controladores, policies y global scope) a traves de la sesion, y el contexto no debe sobrevivir a la peticion: tras el cierre de la peticion, `getCurrentComplexId()` no devuelve ningun conjunto heredado.
+
+**S61.** Decision del usuario (verbatim): "Deuda transversal primero (ComplexContext)" y "Work units chicos, uno por entrega". El alcance de este work unit es la eliminacion del estado global de `ComplexContext`; no incluye el resto de la deuda transversal (desactivacion de conjunto con historial, estados no recuperables por API, grupos de auditoria fuera de catalogo, `notes` en titularidades y rol legacy `responsable`), que queda registrada como deuda para work units posteriores.
+
+**S62.** Sin conjunto resuelto, la aplicacion no expone datos de ningun conjunto. Contexto: el hallazgo `R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY` de la ronda nativa de T19 (L65), que el verificador independiente ya habia detectado como H1 (L64(e)) y demostro preexistente. El ambito global de `BelongsToComplex` hoy no filtra nada cuando no hay conjunto activo, con lo que una peticion sin contexto ve los datos de todos los conjuntos. Decision del usuario (verbatim): *Corregir H1 ahora dentro de T19*. Regla: en el ambito web/API, sin conjunto resuelto, el ambito global no devuelve ninguna fila.
+
+**S63.** La regla de S62 no altera el comportamiento de la consola: `app()->runningInConsole() && ! app()->runningUnitTests()` sigue sin filtrar, para que jobs, seeders y comandos artisan puedan operar sobre todos los conjuntos. Los tests que necesitan leer datos de mas de un conjunto lo declaran de forma explicita con `withoutComplexScope()`.
+
+**S64.** Pruebas de la regla: sin conjunto resuelto, una consulta a un modelo con el ambito global no devuelve filas; con conjunto resuelto, devuelve solo las de ese conjunto; en consola no se filtra. La prueba end-to-end de dos personas (L64, commit `a7f5f26`) se mantiene: la segunda persona no ve ni el conjunto de la primera ni los de otras.
+
+
 ---
 
 ## Tasks
@@ -145,6 +160,7 @@
 | T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit `1c9e0e8` (RED 8 fallos, GREEN 9 pruebas) |
 | T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `d09f1d1` (RED 13 fallos, GREEN 17 pruebas) |
 | T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
+| T19 | S58-S61 | Inline (rama `fix/complex-context-leak`, desde `stg`) | Commits `a24fb49` (fix) + `a7f5f26` (prueba end-to-end) |
 
 ---
 
@@ -155,9 +171,10 @@
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
 | T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
 | T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commits 6d66975 + 75f5085) |
-| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | 🔄 Reabierta (specs S50-S52) |
-| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | 🔄 Reabierta (specs S53-S54, solo tablas por D-07) |
-| T11 | `parking_facilities` + `parking_spaces` | T7 | Media | 🔄 Reabierta (specs S55-S57) |
+| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | ✅ Done (commit `1c9e0e8`, PR #19 mergeado a `stg`) |
+| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | ✅ Done (commit `d09f1d1` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
+| T11 | `parking_facilities` + `parking_spaces` | T7 | Media | ✅ Done (commit `a491549` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
+| T19 | Contexto de conjunto activo sin estado global entre peticiones (`ComplexContext`) + aislamiento sin contexto (S62-S64) | T16 | Media | ✅ Done (commits `a24fb49` + `a7f5f26` + `60163fe`) |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | ✅ Done (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
@@ -565,9 +582,65 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (e) **Riesgo:** `Risk: none` (el work unit es aditivo en esquema, sin superficie HTTP ni cambios en datos existentes).
 
+**L62.** Entrega de T9-T11 ejecutada por el usuario: push de `feat/physical-secondary`, PR **#19** con base `stg` y merge (`7a0d8cb`, "Merge pull request #19 from thekrash22/feat/physical-secondary"), y limpieza de la rama en remoto tras el merge.
+
+(a) **Estado tras la entrega.** `origin/stg` avanza de `1fcec86` a `7a0d8cb` con el merge del PR #19; `24bba5a` (commit documental de cierre) es ancestro de `origin/stg`. `stg` local actualizada con `merge --ff-only origin/stg` y este registro documental vive en ella.
+
+(b) **Rama local.** `feat/physical-secondary` se conserva en `24bba5a` como referencia, sin upstream (la rama remota ya no existe) y con el tracking desvinculado.
+
+(c) **Verificacion de la entrega.** `origin/stg` contiene las 5 migraciones del work unit (relaciones entre unidades, areas comunes, asignaciones de uso exclusivo, instalaciones y espacios de parqueadero) con sus garantias de motor (FKs compuestas, CHECKs, indices unicos, triggers de inmutabilidad y restriccion de exclusion GiST), los modelos y enums correspondientes, las 1.283 lineas de pruebas del work unit y la documentacion.
+
+(d) **Deuda que hereda el work unit siguiente (API de estructura fisica secundaria).** El cierre de una asignacion de uso exclusivo debe exigir `valid_until` en la validacion de la peticion (hoy el motor lo permite y el area queda bloqueada hasta rellenar la fecha); los hallazgos informativos `R1-EXCLUSIVE-CLOSURE-BLOCKS-REUSE` y `R3-TERMINAL-ASSIGNMENT-UNBOUNDED` quedan abiertos como trabajo de la API.
+
+**L63.** Apertura del work unit T19 (decision del usuario, verbatim: *Deuda transversal primero (ComplexContext)* y *Work units chicos, uno por entrega*): specs S58-S61.
+
+(a) **Defecto a corregir.** `app/Services/ComplexContext.php` mantiene `private static ?int $testComplexId`; `setCurrentComplexId()` escribe ahi **ademas** de la sesion (y lo llama el middleware `ResolveActiveComplex` tambien en produccion, no solo en pruebas) y `getCurrentComplexId()` lee ese estatico **con prioridad sobre la sesion**. En un worker persistente (Octane) el conjunto activo de un usuario sobrevive a la peticion de otro usuario y el global scope `BelongsToComplex` filtra por un conjunto ajeno: la fuga es de aislamiento entre conjuntos, no solo de estado.
+
+(b) **Alcance.** Eliminar el estado global manteniendo la API publica de la clase (`getCurrentComplexId`, `setCurrentComplexId`, `getCurrentComplex`, `hasActiveComplex`, `resolveFromRequest`, `clear`) y los ocho call sites de `app/` (dos middleware, el trait `BelongsToComplex`, `AuditLog`, `PermissionService` y `PropertyUnitOwnershipPolicy`). El conjunto verificado por `ResolveActiveComplex` debe seguir disponible para el resto de la peticion a traves de la sesion y no debe sobrevivir a la peticion.
+
+(c) **Fuera de alcance (deuda para work units posteriores).** La divergencia entre `resolveFromRequest` (acepta el encabezado `X-Residential-Complex-Id` si `isMemberOf`, sin exigir membresia activa) y `ActiveComplexResolver::resolve` (exige membresia activa y lanza 403); la desactivacion de conjunto con historial; los estados no recuperables por API; los grupos de auditoria fuera del catalogo cerrado; `notes` en titularidades; el rol legacy `responsable`.
+
+**L64.** Cierre del work unit T19 (contexto de conjunto activo sin estado global): commits `a24fb49` (fix) y `a7f5f26` (prueba end-to-end), rama `fix/complex-context-leak` desde `stg`.
+
+(a) **Fix.** `app/Services/ComplexContext.php` pierde `private static ?int $testComplexId`: `getCurrentComplexId()` lee **solo** la sesion y `setCurrentComplexId()` escribe **solo** la sesion. La API publica de la clase no cambia (los seis metodos estaticos con la misma firma) y los ocho call sites de `app/` no se tocan. `grep -rn 'static \$' app/` no devuelve resultados.
+
+(b) **TDD.** RED verificado contra el codigo previo (archivo de `70c025e` restaurado en una copia): tres tests fallan (`Failed asserting that 1 is null`, `Failed asserting that 1 is identical to 2` y el end-to-end de dos personas). GREEN: **4 pruebas / 11 assertions**.
+
+(c) **Verificacion.** Suite completa **518 pruebas / 1.438 assertions** (514 del baseline mas los 4 tests nuevos), Pint limpio sobre 219 archivos. Baseline del codigo previo sin los tests nuevos: 514 / 1.427, sin ningun test preexistente alterado. El `assess` devuelve riesgo **alto** (escalado por el agente al item 1) con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa; el plan exige verificador independiente, que dio **PASS en S58, S59, S60 y S61** sin hallazgos bloqueantes.
+
+(d) **Correccion de una premisa propia (H4 del verificador).** L63(c) afirmaba que `resolveFromRequest` aceptaba el conjunto pedido sin exigir membresia activa. Es falso: `User::isMemberOf()` ya exige `status = 'active'`. La divergencia real es de **semantica de rechazo** (el encabezado ajeno o con membresia suspendida se ignora y cae a la sesion o a la auto-seleccion, en vez de devolver 403), no una fuga de privilegio entre personas. Queda fuera de alcance, pero la premisa del doc queda corregida.
+
+(e) **Deuda residual prioritaria (H1 del verificador, preexistente y no introducida por este work unit).** Sin conjunto resuelto, el ambito global de `BelongsToComplex` **no filtra nada**: un usuario sin membresia activa que llega a `/buildings` ve edificios de todos los conjuntos. El verificador lo comprobó con sonda en contenedor efimero y el comportamiento es identico con el codigo previo, es decir, ya existia y quedaba enmascarado por el estatico. Es un defecto de aislamiento de riesgo medio que **no** se corrige aqui (fuera del alcance de S58-S61) y que conviene como work unit propio: la regla correcta es que el ambito global no devuelva nada de ningun conjunto cuando no hay contexto resuelto.
+
+(f) **Others hallazgos del verificador.** H2 (cobertura) cerrado: el test end-to-end de dos personas con sesiones distintas quedo commiteado en `a7f5f26`. H3 (informativo): el test de caracterizacion del middleware pasa tambien contra el codigo previo, que es lo que debe hacer un test de caracterizacion. H5 (informativo): `getCurrentComplexId()` ahora castea a `int` de forma explicita. H6 (informativo): `laravel/octane` no esta en `composer.json`, asi que el escenario de worker persistente de S58 es preventivo: el defecto existia igual en cualquier proceso de larga vida.
+
+(g) **Deuda que queda abierta del resto de la deuda transversal (L63(c), sin tocar).** La desactivacion de conjunto con historial; los estados no recuperables por API; los grupos de auditoria fuera del catalogo cerrado; `notes` en titularidades; el rol legacy `responsable`.
+
+**L65.** Ronda nativa de T19: lineage `review-23737772ba0b33bd`, tier medio, lentes `review-risk` y `review-reliability`, 4 rutas y 187 lineas (presupuesto de correccion 94). Los dos reviewers corrieron (`minimax/MiniMax-M2.7`) y la ronda quedo **escalada y detenida** (`native_stop_required`, estado `escalated`, sin reintento automatico) por el hallazgo **`R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY`** con causalidad `unknown_causality`: el provider no pudo decidir si es introducido por el candidato o preexistente. No hay findings no bloqueantes y no se consumio presupuesto de correccion.
+
+(a) **Que es.** Sin conjunto resuelto, el ambito global de `BelongsToComplex` no filtra nada: una peticion sin contexto ve los datos de todos los conjuntos. Es el hallazgo H1 que el verificador independiente ya habia detectado (L64(e)) como **preexistente**: su sonda diferencial dio comportamiento identico con el codigo previo (`70c025e`), asi que T19 no lo introduce.
+
+(b) **Por que no se corrige en T19.** Cambiarlo altera el comportamiento observable de rutas que este work unit no nombra y tiene impacto en consola, seeders y jobs, que hoy consultan sin filtro. La regla correcta (sin contexto no se devuelve nada) es una decision de producto con su propia revision: queda como work unit propio.
+
+(c) **Autoridad.** El lineage queda `escalated` y el provider lo declara terminal: liberar la autoridad o desactivar el switch de revision del clon es decision del mantenedor. T19 conserva su verificacion propia (suite 518/1.438 y verificador independiente PASS en S58-S61) y la entrega sigue la politica ordinaria del repositorio.
+
+**L66.** Correccion de H1 dentro de T19 (decision del usuario, verbatim: *Corregir H1 ahora dentro de T19* y *H1: aislamiento sin contexto*): specs S62-S64.
+
+(a) **Spec.** S62: sin conjunto resuelto, la aplicacion no expone datos de ningun conjunto; el ambito global de `BelongsToComplex` aplica `whereIn('residential_complex_id', [])` cuando no hay conjunto activo. S63: la consola no cambia (`runningInConsole && ! runningUnitTests` sigue sin filtrar) para jobs, seeders y comandos artisan. S64: pruebas de la regla.
+
+(b) **TDD.** RED: el test nuevo `global scope exposes nothing without a resolved complex` falla con `Failed asserting that 2 is identical to 0` (sin contexto se veian las unidades de los dos complejos) y la suite completa queda con **33 tests fallidos en 11 archivos**, casi todos por relaciones que se resuelven con una consulta filtrada (`Attempt to read property "id" on null`). GREEN: **519 pruebas / 1.439 assertions** y Pint limpio sobre 219 archivos.
+
+(c) **Adaptacion de los tests (delegada a `gentle-ai-worker`, con superficies acotadas a los 11 archivos).** Los 33 tests quedaron en verde fijando el contexto del conjunto (`ComplexContext::setCurrentComplexId`) en el `setUp` de cada archivo, que es la semantica real de la aplicacion; ninguno requirio `withoutComplexScope()` porque los tests que leen de mas de un conjunto a proposito ya usan `forComplex()` o `assertDatabaseHas`. Verificado con `git diff -U0`: lo unico eliminado son cuatro comentarios obsoletos que decian que el contexto era estatico, y ninguna asercion se elimino, relajo ni modifico.
+
+(d) **Revision nativa.** La ronda anterior (`review-23737772ba0b33bd`) quedo escalada y detenida (L65) por `R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY`; ese lineage queda terminal y su liberacion es decision del mantenedor. Para el codigo corregido, el `assess` devuelve riesgo medio con `reviewDue: false` (`under_budget`): el proveedor no exige otra ronda y el plan deja la verificacion en el verificador independiente.
+
+(e) **Commits.** `60163fe` (fix del ambito global y adaptacion de los 11 archivos de test) sobre `d63ff56`.
+
 ## Delivery
 
-- **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. El slice acumulado mide **20 rutas y 1.886 lineas** contra `stg` (T9: 5/396, T10: 8/848, T11: 7/642); el `assess` del proveedor sobre ese slice devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion. El push y la apertura de los PRs quedan como decision del usuario.
+- **Work unit T19 (contexto de conjunto activo sin estado global).** Rama `fix/complex-context-leak` desde `stg`: dos commits (`a24fb49` fix y `a7f5f26` prueba end-to-end), 4 rutas y 168 lineas contra `stg`. Elimina el estatico `testComplexId` de `ComplexContext`, que hacia que el conjunto activo de una peticion sobreviviera a la siguiente y que el ambito global `BelongsToComplex` filtrara por el conjunto de otra persona. TDD con RED de 3 tests contra el codigo previo y GREEN de 4/11; suite completa 518/1.438 y Pint limpio. `assess` con riesgo alto (escalado al item 1) y `reviewDue: false` (`under_budget`): sin ronda nativa, con verificador independiente que dio PASS en S58-S61. Deuda residual prioritaria y preexistente (H1): sin conjunto resuelto el ambito global no filtra nada y un usuario sin membresia activa ve edificios de todos los conjuntos. El PR es manual, con base `stg`: `https://github.com/thekrash22/ziruma360/pull/new/fix/complex-context-leak`.
+
+- **Cadena T9-T11 (estructura fisica secundaria) — ENTREGADA.** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), siete commits de correccion de la revision nativa (`58a59a4`, `a32b4d2`, `1921625`, `fd34e62`, `c54264b`, `b71ec67`, `fc99688`) y el commit documental de cierre (`24bba5a`). La entrega se hizo en **un solo PR con base `stg`** (PR **#19**, `feat/physical-secondary` -> `stg`), **mergeado** con el commit `7a0d8cb`, y la rama en remoto fue eliminada por el usuario tras el merge. El slice final contra `stg` mide **23 rutas y 2.743 lineas**; la revision nativa del slice T10+T11 quedo **APROBADA** con la autoridad `review-a8e70d38589df9c4` (quemada, `gentle-ai.review-acknowledged/v1`), tras corregir seis hallazgos CRITICAL de cascada, solapamiento, inmutabilidad y concurrencia (L55-L61).
 
 - **Espejo Engram resuelto.** El topic `odd/ziruma360-core-admin/tasks` quedo guardado en Engram (proyecto `ziruma360`, observacion 852) con el resumen de T9-T11. Para eso hubo que ejecutar `engram init ziruma360` en la raiz del repositorio: el directorio tenia historial bajo dos nombres de proyecto (`360` y `ziruma360`) y Engram rechazaba toda escritura por ambiguedad. `.engram/config.json` es estado local de la herramienta y esta en `.gitignore`, no se versiona.
 

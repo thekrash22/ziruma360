@@ -8,30 +8,28 @@ use Illuminate\Support\Facades\Session;
 /**
  * Servicio para gestionar el contexto del conjunto residencial activo.
  * Resuelve el conjunto activo desde la sesión del usuario.
+ *
+ * El contexto vive en la sesión y nowhere más. Un worker persistente
+ * (Octane) atiende a varios usuarios en el mismo proceso: guardar el
+ * conjunto activo en un estático lo sobreviviría a la petición y el ámbito
+ * global de `BelongsToComplex` filtraría por el conjunto de otra persona.
  */
 class ComplexContext
 {
     private const SESSION_KEY = 'active_residential_complex_id';
-
-    // For testing purposes
-    private static ?int $testComplexId = null;
 
     /**
      * Get the current complex ID from session.
      */
     public static function getCurrentComplexId(): ?int
     {
-        // Allow test override
-        if (self::$testComplexId !== null) {
-            return self::$testComplexId;
+        if (! app()->bound('session')) {
+            return null;
         }
 
-        // Check if session is available
-        if (app()->bound('session')) {
-            return Session::get(self::SESSION_KEY);
-        }
+        $complexId = Session::get(self::SESSION_KEY);
 
-        return null;
+        return $complexId === null ? null : (int) $complexId;
     }
 
     /**
@@ -39,14 +37,14 @@ class ComplexContext
      */
     public static function setCurrentComplexId(?int $complexId): void
     {
-        self::$testComplexId = $complexId;
+        if (! app()->bound('session')) {
+            return;
+        }
 
-        if (app()->bound('session')) {
-            if ($complexId === null) {
-                Session::forget(self::SESSION_KEY);
-            } else {
-                Session::put(self::SESSION_KEY, $complexId);
-            }
+        if ($complexId === null) {
+            Session::forget(self::SESSION_KEY);
+        } else {
+            Session::put(self::SESSION_KEY, $complexId);
         }
     }
 
@@ -115,8 +113,6 @@ class ComplexContext
      */
     public static function clear(): void
     {
-        self::$testComplexId = null;
-
         if (app()->bound('session')) {
             Session::forget(self::SESSION_KEY);
         }

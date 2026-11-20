@@ -9,6 +9,7 @@ use App\Models\Person;
 use App\Models\PropertyUnit;
 use App\Models\PropertyUnitOwnership;
 use App\Models\ResidentialComplex;
+use App\Services\ComplexContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,22 @@ class PropertyUnitOwnershipsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        ComplexContext::clear();
+
         $this->complex = ResidentialComplex::factory()->create();
+
+        // S62: sin conjunto resuelto el ambito global no devuelve ninguna fila
+        // de ningun conjunto. Este archivo opera sobre un unico conjunto, asi
+        // que el contexto se fija antes de cualquier lectura.
+        ComplexContext::setCurrentComplexId($this->complex->id);
+    }
+
+    protected function tearDown(): void
+    {
+        ComplexContext::clear();
+
+        parent::tearDown();
     }
 
     /**
