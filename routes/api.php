@@ -4,9 +4,7 @@ use App\Http\Controllers\Api\Core\ComplexSettingsController;
 use App\Http\Controllers\Api\Core\OwnershipController;
 use App\Http\Controllers\Api\Core\PersonController;
 use App\Http\Controllers\Api\Core\PropertyUnitController;
-use App\Http\Controllers\Api\PersonaController;
 use App\Http\Controllers\Api\ResidentialComplexController;
-use App\Http\Controllers\Api\UnidadController;
 use App\Http\Middleware\ResolveActiveComplex;
 use App\Http\Middleware\ResolvePropertyUnit;
 use App\Http\Middleware\ResolveResidentialComplex;
@@ -69,29 +67,55 @@ Route::prefix('v1')
             ->name('api.buildings.destroy');
     });
 
-Route::prefix('v1')->group(function () {
-    // Units CRUD
-    Route::apiResource('units', UnidadController::class)
-        ->parameters(['units' => 'unidad'])
-        ->names([
-            'index' => 'api.units.index',
-            'store' => 'api.units.store',
-            'show' => 'api.units.show',
-            'update' => 'api.units.update',
-            'destroy' => 'api.units.destroy',
-        ]);
+/*
+|--------------------------------------------------------------------------
+| API Legacy re-apuntada al dominio nuevo (S39, work unit T17)
+|--------------------------------------------------------------------------
+|
+| `/api/v1/units` y `/api/v1/people` se re-apuntan a `property_units` y
+| `people`. Se conservan los paths, los nombres de ruta (`api.units.*`,
+| `api.people.*`) y los nombres de parametro de URL (`unidad`, `persona`):
+| es un re-apuntado, no un rename.
+|
+| El middleware es el mismo que `/api/v1/core/*`: sesion, `auth` y
+| resolucion del conjunto activo en el servidor contra las membresias
+| activas del actor (S9). Antes de este cambio estas rutas exponian datos
+| sin autenticar.
+|
+*/
 
-    // People CRUD
-    Route::apiResource('people', PersonaController::class)
-        ->parameters(['people' => 'persona'])
-        ->names([
-            'index' => 'api.people.index',
-            'store' => 'api.people.store',
-            'show' => 'api.people.show',
-            'update' => 'api.people.update',
-            'destroy' => 'api.people.destroy',
-        ]);
-});
+Route::prefix('v1')
+    ->middleware([
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ValidateCsrfToken::class,
+        'auth',
+        ResolveActiveComplex::class,
+    ])
+    ->group(function (): void {
+        // Units CRUD (dominio nuevo: property_units)
+        Route::apiResource('units', PropertyUnitController::class)
+            ->parameters(['units' => 'unidad'])
+            ->names([
+                'index' => 'api.units.index',
+                'store' => 'api.units.store',
+                'show' => 'api.units.show',
+                'update' => 'api.units.update',
+                'destroy' => 'api.units.destroy',
+            ]);
+
+        // People CRUD (dominio nuevo: people)
+        Route::apiResource('people', PersonController::class)
+            ->parameters(['people' => 'persona'])
+            ->names([
+                'index' => 'api.people.index',
+                'store' => 'api.people.store',
+                'show' => 'api.people.show',
+                'update' => 'api.people.update',
+                'destroy' => 'api.people.destroy',
+            ]);
+    });
 
 /*
 |--------------------------------------------------------------------------
@@ -103,8 +127,8 @@ Route::prefix('v1')->group(function () {
 | membresias activas del actor (S9) y cada recurso se busca dentro de ese
 | conjunto (ACE-C01), de modo que un recurso de otro conjunto responde 404.
 |
-| La superficie legacy (/api/v1/units, /api/v1/people) no se toca: migrarla
-| al dominio nuevo es el work unit T17.
+| La superficie legacy (/api/v1/units, /api/v1/people) ya esta re-apuntada al
+| dominio nuevo en T17; estas rutas de `/api/v1/core/*` siguen igual.
 |
 */
 

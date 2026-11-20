@@ -1,51 +1,60 @@
 <script setup lang="ts">
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
-interface ResidentialComplex {
-  id: number;
+interface BuildingSummary {
   uuid: string;
   name: string;
   code: string;
 }
 
-interface Unidad {
-  id: number;
+interface FloorSummary {
   uuid: string;
-  numero: string;
-  piso: string | null;
-  torre: string | null;
-  tipo: string;
+  floor_number: number;
+  name: string | null;
+  display_name: string;
+}
+
+interface Unit {
+  uuid: string;
+  number: string;
+  unit_type: string;
+  unit_type_label: string;
   status: string;
   status_label: string;
-  residential_complex: {
-    uuid: string;
-    name: string;
-    code: string;
-  };
-  created_at: string;
+  internal_code: string | null;
+  area_m2: string | null;
+  building: BuildingSummary | null;
+  building_floor: FloorSummary | null;
+  created_at: string | null;
 }
 
 interface PageProps {
-  unidades: {
-    data: Unidad[];
+  units: {
+    data: Unit[];
     current_page: number;
     last_page: number;
     per_page: number;
     total: number;
-    from: number;
-    to: number;
+    from: number | null;
+    to: number | null;
     links: any[];
   };
-  complexes: ResidentialComplex[];
   filters: {
     search?: string;
     status?: string;
-    torre?: string;
-    residential_complex_id?: string;
-    per_page?: string;
+    unit_type?: string;
   };
+  unitTypes: Array<{
+    value: string;
+    label: string;
+  }>;
+  statuses: Array<{
+    value: string;
+    label: string;
+  }>;
+  canDelete: boolean;
   flash?: {
     success?: string;
     error?: string;
@@ -57,51 +66,48 @@ const props = defineProps<PageProps>();
 const search = ref(props.filters.search || '');
 const showFilters = ref(false);
 
-const handleDelete = (uuid: string, numero: string) => {
-  if (confirm(`¿Estás seguro de eliminar la unidad ${numero}?`)) {
-    window.location.href = route('units.destroy', uuid);
-  }
-};
-
-const navigateTo = (name: string, params?: Record<string, any>) => {
-  window.location.href = route(name, params);
-};
-
-// Status options
-const statusOptions = [
-  { value: '', label: 'Todos los estados' },
-  { value: 'draft', label: 'Borrador' },
-  { value: 'active', label: 'Activo' },
-  { value: 'inactive', label: 'Inactivo' },
-  { value: 'maintenance', label: 'En mantenimiento' },
-];
-
-// Status badge colors
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
     active: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
     inactive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-    maintenance: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
+    under_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
   };
-  return colors[status] || colors.draft;
+  return colors[status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+};
+
+const navigateTo = (params: Record<string, string>) => {
+  const query: Record<string, string> = {};
+
+  if (params.search) query.search = params.search;
+  if (params.status) query.status = params.status;
+  if (params.unit_type) query.unit_type = params.unit_type;
+
+  router.get(route('units.index', query), {}, { preserveState: true, replace: true });
 };
 
 const handleSearch = () => {
-  const params: Record<string, string> = {};
-  if (search.value) params.search = search.value;
-  if (props.filters.status) params.status = props.filters.status;
-  if (props.filters.residential_complex_id) params.residential_complex_id = props.filters.residential_complex_id;
-  if (props.filters.torre) params.torre = props.filters.torre;
-  
-  navigateTo('units.index', params);
+  navigateTo({
+    search: search.value,
+    status: props.filters.status || '',
+    unit_type: props.filters.unit_type || '',
+  });
 };
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('es-CO', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+const clearFilters = () => {
+  search.value = '';
+  router.get(route('units.index'), {}, { preserveState: true, replace: true });
+};
+
+const deactivate = (unit: Unit) => {
+  if (!confirm(`¿Desactivar la unidad ${unit.number}? La unidad se conserva con su historial.`)) {
+    return;
+  }
+
+  router.delete(route('units.destroy', unit.uuid), {
+    preserveScroll: true,
+    onSuccess: () => {
+      // La recarga de la tabla la hace Inertia con la respuesta del servidor.
+    },
   });
 };
 </script>
@@ -116,7 +122,7 @@ const formatDate = (dateString: string) => {
           Unidades
         </h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Gestiona las unidades de los edificios y conjuntos residenciales.
+          Gestiona las unidades del conjunto: numero, tipo, estado, edificio y piso.
         </p>
       </div>
       <a
@@ -146,7 +152,7 @@ const formatDate = (dateString: string) => {
             <input
               v-model="search"
               type="text"
-              placeholder="Buscar por número de unidad..."
+              placeholder="Buscar por numero de unidad..."
               class="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               @keyup.enter="handleSearch"
             />
@@ -155,7 +161,7 @@ const formatDate = (dateString: string) => {
             </svg>
           </div>
         </div>
-        
+
         <button
           @click="showFilters = !showFilters"
           class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -167,8 +173,8 @@ const formatDate = (dateString: string) => {
         </button>
 
         <button
-          v-if="props.filters.search || props.filters.status || props.filters.residential_complex_id"
-          @click="navigateTo('units.index')"
+          v-if="props.filters.search || props.filters.status || props.filters.unit_type"
+          @click="clearFilters"
           class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
         >
           Limpiar
@@ -179,17 +185,17 @@ const formatDate = (dateString: string) => {
       </div>
 
       <!-- Expanded Filters -->
-      <div v-if="showFilters" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div v-if="showFilters" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Conjunto</label>
+          <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Tipo</label>
           <select
-            :value="props.filters.residential_complex_id"
+            :value="props.filters.unit_type"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            @change="navigateTo('units.index', { ...props.filters, residential_complex_id: ($event.target as HTMLSelectElement).value })"
+            @change="navigateTo({ search: search, status: props.filters.status || '', unit_type: ($event.target as HTMLSelectElement).value })"
           >
-            <option value="">Todos los conjuntos</option>
-            <option v-for="complex in props.complexes" :key="complex.id" :value="complex.id">
-              {{ complex.name }}
+            <option value="">Todos los tipos</option>
+            <option v-for="type in props.unitTypes" :key="type.value" :value="type.value">
+              {{ type.label }}
             </option>
           </select>
         </div>
@@ -199,23 +205,13 @@ const formatDate = (dateString: string) => {
           <select
             :value="props.filters.status"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            @change="navigateTo('units.index', { ...props.filters, status: ($event.target as HTMLSelectElement).value })"
+            @change="navigateTo({ search: search, status: ($event.target as HTMLSelectElement).value, unit_type: props.filters.unit_type || '' })"
           >
-            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
+            <option value="">Todos los estados</option>
+            <option v-for="status in props.statuses" :key="status.value" :value="status.value">
+              {{ status.label }}
             </option>
           </select>
-        </div>
-
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Torre</label>
-          <input
-            :value="props.filters.torre"
-            type="text"
-            placeholder="Ej: Torre A"
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            @change="navigateTo('units.index', { ...props.filters, torre: ($event.target as HTMLInputElement).value })"
-          />
         </div>
       </div>
     </div>
@@ -230,16 +226,16 @@ const formatDate = (dateString: string) => {
                 Unidad
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Conjunto
-              </th>
-              <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Tipo
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Estado
+                Edificio
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Fecha Creación
+                Piso
+              </th>
+              <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Estado
               </th>
               <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Acciones
@@ -247,34 +243,33 @@ const formatDate = (dateString: string) => {
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-            <tr v-for="unidad in props.unidades.data" :key="unidad.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <tr v-for="unit in props.units.data" :key="unit.uuid" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
               <td class="whitespace-nowrap px-4 py-3">
                 <div>
-                  <span class="font-medium text-gray-800 dark:text-white">{{ unidad.numero }}</span>
-                  <span v-if="unidad.torre" class="ml-1 text-sm text-gray-500">/ {{ unidad.torre }}</span>
-                  <span v-if="unidad.piso" class="ml-1 text-sm text-gray-500">- Piso {{ unidad.piso }}</span>
+                  <span class="font-medium text-gray-800 dark:text-white">{{ unit.number }}</span>
+                  <span v-if="unit.internal_code" class="ml-2 text-sm text-gray-500">{{ unit.internal_code }}</span>
                 </div>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                {{ unidad.residential_complex?.name || '-' }}
+                {{ unit.unit_type_label }}
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                {{ unidad.tipo }}
+                {{ unit.building?.name || '-' }}
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                {{ unit.building_floor?.display_name || '-' }}
               </td>
               <td class="whitespace-nowrap px-4 py-3">
-                <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(unidad.status)]">
-                  {{ unidad.status_label }}
+                <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(unit.status)]">
+                  {{ unit.status_label }}
                 </span>
-              </td>
-              <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                {{ formatDate(unidad.created_at) }}
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-right">
                 <div class="flex items-center justify-end gap-2">
                   <a
-                    :href="route('units.show', unidad.uuid)"
+                    :href="route('units.show', unit.uuid)"
                     class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                    title="Ver"
+                    title="Ver detalles"
                   >
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -282,7 +277,7 @@ const formatDate = (dateString: string) => {
                     </svg>
                   </a>
                   <a
-                    :href="route('units.edit', unidad.uuid)"
+                    :href="route('units.edit', unit.uuid)"
                     class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
                     title="Editar"
                   >
@@ -291,18 +286,19 @@ const formatDate = (dateString: string) => {
                     </svg>
                   </a>
                   <button
+                    v-if="props.canDelete"
                     class="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
-                    title="Eliminar"
-                    @click="handleDelete(unidad.uuid, unidad.numero)"
+                    title="Desactivar"
+                    @click="deactivate(unit)"
                   >
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a2 2 0 00-1-1h-4a2 2 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 </div>
               </td>
             </tr>
-            <tr v-if="props.unidades.data.length === 0">
+            <tr v-if="props.units.data.length === 0">
               <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 No se encontraron unidades.
               </td>
@@ -312,13 +308,13 @@ const formatDate = (dateString: string) => {
       </div>
 
       <!-- Pagination -->
-      <div v-if="props.unidades.last_page > 1" class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+      <div v-if="props.units.last_page > 1" class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
         <div class="text-sm text-gray-500 dark:text-gray-400">
-          Mostrando {{ props.unidades.from }} a {{ props.unidades.to }} de {{ props.unidades.total }} resultados
+          Mostrando {{ props.units.from }} a {{ props.units.to }} de {{ props.units.total }} resultados
         </div>
         <div class="flex gap-1">
           <a
-            v-for="(link, index) in props.unidades.links"
+            v-for="(link, index) in props.units.links"
             :key="index"
             :href="link.url || '#'"
             :class="[

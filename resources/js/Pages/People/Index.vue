@@ -1,46 +1,49 @@
 <script setup lang="ts">
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
-interface TipoDocumento {
-  value: string;
-  label: string;
+interface PersonUnit {
+  uuid: string;
+  number: string;
+  relation: string | null;
+  relation_label: string | null;
 }
 
-interface Persona {
-  id: number;
+interface Person {
   uuid: string;
-  nombre: string;
-  apellido: string;
-  nombre_completo: string;
-  tipo_documento: string;
-  tipo_documento_label: string;
-  numero_documento: string;
-  email: string | null;
-  telefono: string | null;
-  has_user_account: boolean;
-  created_at: string;
+  full_name: string;
+  document_type?: string | null;
+  document_type_label?: string | null;
+  document_number?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  status: string;
+  status_label?: string;
+  units?: PersonUnit[];
 }
 
 interface PageProps {
-  personas: {
-    data: Persona[];
+  people: {
+    data: Person[];
     current_page: number;
     last_page: number;
     per_page: number;
     total: number;
-    from: number;
-    to: number;
+    from: number | null;
+    to: number | null;
     links: any[];
   };
-  documentTypes: TipoDocumento[];
   filters: {
     search?: string;
-    tipo_documento?: string;
-    has_user?: string;
-    per_page?: string;
+    status?: string;
   };
+  statuses: Array<{
+    value: string;
+    label: string;
+  }>;
+  canViewDocument: boolean;
+  canDelete: boolean;
   flash?: {
     success?: string;
     error?: string;
@@ -50,31 +53,44 @@ interface PageProps {
 const props = defineProps<PageProps>();
 
 const search = ref(props.filters.search || '');
+const showFilters = ref(false);
 
-const handleDelete = (uuid: string, name: string) => {
-  if (confirm(`¿Estás seguro de eliminar a ${name}?`)) {
-    window.location.href = route('people.destroy', uuid);
-  }
+const getStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    active: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+    inactive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+  };
+  return colors[status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
 };
 
-const navigateTo = (name: string, params?: Record<string, any>) => {
-  window.location.href = route(name, params);
+const navigateTo = (params: Record<string, string>) => {
+  const query: Record<string, string> = {};
+
+  if (params.search) query.search = params.search;
+  if (params.status) query.status = params.status;
+
+  router.get(route('people.index', query), {}, { preserveState: true, replace: true });
 };
 
 const handleSearch = () => {
-  const params: Record<string, string> = {};
-  if (search.value) params.search = search.value;
-  if (props.filters.tipo_documento) params.tipo_documento = props.filters.tipo_documento;
-  if (props.filters.has_user) params.has_user = props.filters.has_user;
-  
-  navigateTo('people.index', params);
+  navigateTo({
+    search: search.value,
+    status: props.filters.status || '',
+  });
 };
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('es-CO', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+const clearFilters = () => {
+  search.value = '';
+  router.get(route('people.index'), {}, { preserveState: true, replace: true });
+};
+
+const deactivate = (person: Person) => {
+  if (!confirm(`¿Desactivar a ${person.full_name}? La persona se conserva con su historial.`)) {
+    return;
+  }
+
+  router.delete(route('people.destroy', person.uuid), {
+    preserveScroll: true,
   });
 };
 </script>
@@ -89,7 +105,7 @@ const formatDate = (dateString: string) => {
           Personas
         </h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Gestiona propietarios, residentes y otras personas del sistema.
+          Gestiona las personas del conjunto y las unidades a las que llegan.
         </p>
       </div>
       <a
@@ -119,7 +135,7 @@ const formatDate = (dateString: string) => {
             <input
               v-model="search"
               type="text"
-              placeholder="Buscar por nombre o número de documento..."
+              placeholder="Buscar por nombre..."
               class="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               @keyup.enter="handleSearch"
             />
@@ -130,8 +146,18 @@ const formatDate = (dateString: string) => {
         </div>
 
         <button
-          v-if="props.filters.search || props.filters.tipo_documento || props.filters.has_user"
-          @click="navigateTo('people.index')"
+          @click="showFilters = !showFilters"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Filtros
+        </button>
+
+        <button
+          v-if="props.filters.search || props.filters.status"
+          @click="clearFilters"
           class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
         >
           Limpiar
@@ -139,6 +165,23 @@ const formatDate = (dateString: string) => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
+      </div>
+
+      <!-- Expanded Filters -->
+      <div v-if="showFilters" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Estado</label>
+          <select
+            :value="props.filters.status"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            @change="navigateTo({ search: search, status: ($event.target as HTMLSelectElement).value })"
+          >
+            <option value="">Todos los estados</option>
+            <option v-for="status in props.statuses" :key="status.value" :value="status.value">
+              {{ status.label }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -149,19 +192,22 @@ const formatDate = (dateString: string) => {
           <thead>
             <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/50">
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Nombre
+                Persona
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Documento
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Contacto
+                Telefono
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Cuenta
+                Email
               </th>
               <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Fecha Creación
+                Unidades
+              </th>
+              <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Estado
               </th>
               <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Acciones
@@ -169,51 +215,52 @@ const formatDate = (dateString: string) => {
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-            <tr v-for="persona in props.personas.data" :key="persona.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <tr v-for="person in props.people.data" :key="person.uuid" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
               <td class="whitespace-nowrap px-4 py-3">
                 <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 text-sm font-medium text-white">
-                    {{ persona.nombre.charAt(0) }}{{ persona.apellido.charAt(0) }}
+                  <div class="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-sm font-medium text-white">
+                    {{ person.full_name.charAt(0) }}
                   </div>
-                  <span class="font-medium text-gray-800 dark:text-white">
-                    {{ persona.nombre_completo }}
-                  </span>
-                </div>
-              </td>
-              <td class="whitespace-nowrap px-4 py-3">
-                <div>
-                  <p class="text-sm text-gray-800 dark:text-white">{{ persona.tipo_documento_label }}</p>
-                  <p class="text-sm text-gray-500">{{ persona.numero_documento }}</p>
+                  <span class="font-medium text-gray-800 dark:text-white">{{ person.full_name }}</span>
                 </div>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                <div>
-                  <p v-if="persona.email">{{ persona.email }}</p>
-                  <p v-if="persona.telefono" class="text-gray-500">{{ persona.telefono }}</p>
-                  <span v-if="!persona.email && !persona.telefono">-</span>
+                <span v-if="person.document_number">
+                  {{ person.document_type_label || person.document_type }} {{ person.document_number }}
+                </span>
+                <span v-else>-</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                {{ person.phone || '-' }}
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                {{ person.email || '-' }}
+              </td>
+              <td class="px-4 py-3">
+                <div v-if="(person.units || []).length > 0" class="flex flex-wrap gap-1">
+                  <a
+                    v-for="unit in person.units"
+                    :key="unit.uuid + '-' + unit.relation"
+                    :href="route('units.show', unit.uuid)"
+                    class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    {{ unit.number }}
+                    <span class="text-gray-500 dark:text-gray-400">({{ unit.relation_label }})</span>
+                  </a>
                 </div>
+                <span v-else class="text-sm text-gray-400">-</span>
               </td>
               <td class="whitespace-nowrap px-4 py-3">
-                <span
-                  :class="[
-                    'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                    persona.has_user_account
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                  ]"
-                >
-                  {{ persona.has_user_account ? 'Vinculada' : 'Sin cuenta' }}
+                <span :class="['rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(person.status)]">
+                  {{ person.status_label || person.status }}
                 </span>
-              </td>
-              <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                {{ formatDate(persona.created_at) }}
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-right">
                 <div class="flex items-center justify-end gap-2">
                   <a
-                    :href="route('people.show', persona.uuid)"
+                    :href="route('people.show', person.uuid)"
                     class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                    title="Ver"
+                    title="Ver detalles"
                   >
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -221,7 +268,7 @@ const formatDate = (dateString: string) => {
                     </svg>
                   </a>
                   <a
-                    :href="route('people.edit', persona.uuid)"
+                    :href="route('people.edit', person.uuid)"
                     class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
                     title="Editar"
                   >
@@ -230,19 +277,20 @@ const formatDate = (dateString: string) => {
                     </svg>
                   </a>
                   <button
+                    v-if="props.canDelete"
                     class="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
-                    title="Eliminar"
-                    @click="handleDelete(persona.uuid, persona.nombre_completo)"
+                    title="Desactivar"
+                    @click="deactivate(person)"
                   >
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a2 2 0 00-1-1h-4a2 2 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 </div>
               </td>
             </tr>
-            <tr v-if="props.personas.data.length === 0">
-              <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            <tr v-if="props.people.data.length === 0">
+              <td colspan="7" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 No se encontraron personas.
               </td>
             </tr>
@@ -251,13 +299,13 @@ const formatDate = (dateString: string) => {
       </div>
 
       <!-- Pagination -->
-      <div v-if="props.personas.last_page > 1" class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+      <div v-if="props.people.last_page > 1" class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
         <div class="text-sm text-gray-500 dark:text-gray-400">
-          Mostrando {{ props.personas.from }} a {{ props.personas.to }} de {{ props.personas.total }} resultados
+          Mostrando {{ props.people.from }} a {{ props.people.to }} de {{ props.people.total }} resultados
         </div>
         <div class="flex gap-1">
           <a
-            v-for="(link, index) in props.personas.links"
+            v-for="(link, index) in props.people.links"
             :key="index"
             :href="link.url || '#'"
             :class="[

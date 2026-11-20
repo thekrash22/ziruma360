@@ -2,79 +2,145 @@
 
 namespace Tests\Feature;
 
-use App\Models\Persona;
-use App\Models\PersonaUnidad;
-use App\Models\ResidentialComplex;
-use App\Models\ResidentialComplexMembership;
-use App\Models\Unidad;
-use App\Models\User;
-use App\Services\ComplexContext;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
+use App\Enums\SystemRole;
+use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Tests\TestCase;
+use Tests\Feature\Core\CoreTestCase;
 
 /**
- * El legacy sigue activo hasta T17, asi que sus modelos deben apuntar a las
- * tablas que las migraciones legacy crearon en PostgreSQL. El plural derivado
- * por Eloquent no coincide con el plural en espanol de "unidad" ("unidads"),
- * por eso el contrato se fija de forma explicita.
+ * Contrato vigente tras el retiro del modelo legacy (spec S40, T17 unidad C).
+ *
+ * El legacy (`unidades`, `personas`, `persona_unidad`) se retiro del esquema
+ * y del codigo: las tres tablas ya no existen, sus modelos y el enum
+ * `UnidadStatus` ya no existen, y las rutas `/units` y `/people` se sirven
+ * sobre el dominio nuevo (`property_units`, `people`) con los permisos del
+ * catalogo (S35/S38).
+ *
+ * Las afirmaciones son sobre la interfaz publica: codigo de estado, props de
+ * Inertia y el estado del esquema, nunca sobre el estado interno.
  */
-class LegacySchemaContractTest extends TestCase
+class LegacySchemaContractTest extends CoreTestCase
 {
-    use RefreshDatabase;
+    /*
+    |--------------------------------------------------------------------------
+    | El esquema legacy ya no existe
+    |--------------------------------------------------------------------------
+    */
 
-    protected function tearDown(): void
+    #[DataProvider('legacyTables')]
+    public function test_the_legacy_table_no_longer_exists_in_the_schema(string $table): void
     {
-        // El middleware legacy deja el conjunto activo en un estatico de
-        // ComplexContext: sin limpiarlo filtra los tests siguientes por un
-        // conjunto que ya no existe.
-        ComplexContext::clear();
-
-        parent::tearDown();
-    }
-
-    #[DataProvider('legacyModels')]
-    public function test_the_legacy_model_resolves_the_migrated_table(string $model, string $table): void
-    {
-        $this->assertSame(
-            $table,
-            (new $model)->getTable(),
-            "El modelo {$model} debe resolver la tabla migrada {$table}."
+        $row = DB::selectOne(
+            'select exists (
+                select 1
+                from information_schema.tables
+                where table_schema = current_schema()
+                  and table_name = ?
+            ) as present',
+            [$table]
         );
 
-        $this->assertTrue(
-            Schema::hasTable($table),
-            "La tabla {$table} debe existir en la base de datos."
+        $this->assertFalse(
+            (bool) $row->present,
+            "La tabla legacy {$table} ya no debe existir en el esquema."
         );
     }
 
-    public static function legacyModels(): array
+    public static function legacyTables(): array
     {
         return [
-            'unidades' => [Unidad::class, 'unidades'],
-            'personas' => [Persona::class, 'personas'],
-            'persona_unidad' => [PersonaUnidad::class, 'persona_unidad'],
+            'unidades' => ['unidades'],
+            'personas' => ['personas'],
+            'persona_unidad' => ['persona_unidad'],
         ];
     }
 
-    public function test_the_legacy_units_listing_query_runs(): void
+    /*
+    |--------------------------------------------------------------------------
+    | El codigo legacy ya no existe
+    |--------------------------------------------------------------------------
+    */
+
+    #[DataProvider('legacyClasses')]
+    public function test_the_legacy_class_no_longer_exists(string $class): void
     {
-        $this->assertCount(0, Unidad::query()->orderBy('created_at', 'desc')->limit(15)->get());
+        $this->assertFalse(
+            class_exists($class),
+            "La clase legacy {$class} ya no debe existir."
+        );
     }
 
-    public function test_the_legacy_units_page_answers(): void
+    #[DataProvider('legacyClasses')]
+    public function test_the_legacy_enum_no_longer_exists(string $class): void
     {
-        $user = User::factory()->create();
-        $complex = ResidentialComplex::factory()->create();
-        ResidentialComplexMembership::factory()->active()->create([
-            'user_id' => $user->id,
-            'residential_complex_id' => $complex->id,
-        ]);
+        $this->assertFalse(
+            enum_exists($class),
+            "El enum legacy {$class} ya no debe existir."
+        );
+    }
 
-        $response = $this->actingAs($user)->get('/units');
+    public static function legacyClasses(): array
+    {
+        return [
+            'Unidad' => [\App\Models\Unidad::class],
+            'Persona' => [\App\Models\Persona::class],
+            'PersonaUnidad' => [\App\Models\PersonaUnidad::class],
+            'UnidadStatus' => [\App\Enums\UnidadStatus::class],
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Las rutas web sirven el dominio nuevo
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_the_units_page_answers_with_the_new_domain_for_an_actor_with_permissions(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $response = $this->actingAs($admin)->get('/units');
 
         $response->assertOk();
-        $response->assertSee('Units', false);
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Units/Index')
+        );
+    }
+
+    public function test_the_people_page_answers_with_the_new_domain_for_an_actor_with_permissions(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $response = $this->actingAs($admin)->get('/people');
+
+        $response->assertOk();
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('People/Index')
+        );
+    }
+
+    public function test_the_units_page_is_forbidden_for_an_actor_without_permissions(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        // El portero no tiene permiso de unidades.
+        [$doorman] = $this->makeMember($complex, SystemRole::DOORMAN);
+
+        $this->actingAs($doorman)
+            ->get('/units')
+            ->assertForbidden();
+    }
+
+    public function test_the_people_page_is_forbidden_for_an_actor_without_permissions(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        // El anfitrion no tiene permiso de personas (ni completo ni minimo).
+        [$host] = $this->makeMember($complex, SystemRole::HOST);
+
+        $this->actingAs($host)
+            ->get('/people')
+            ->assertForbidden();
     }
 }

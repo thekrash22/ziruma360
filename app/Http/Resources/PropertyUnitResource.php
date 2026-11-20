@@ -26,6 +26,14 @@ class PropertyUnitResource extends JsonResource
             'notes' => $this->notes,
             'building_id' => $this->building_id,
             'building_floor_id' => $this->building_floor_id,
+            'building' => $this->building ? [
+                'uuid' => $this->building->uuid,
+                'name' => $this->building->name,
+            ] : null,
+            'building_floor' => $this->buildingFloor ? [
+                'uuid' => $this->buildingFloor->uuid,
+                'name' => $this->buildingFloor->display_name,
+            ] : null,
         ];
     }
 }
