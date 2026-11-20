@@ -7,6 +7,11 @@ use App\Http\Controllers\Api\Core\PropertyUnitController;
 use App\Http\Controllers\Api\ResidentialComplexController;
 use App\Http\Middleware\ResolveActiveComplex;
 use App\Http\Middleware\ResolvePropertyUnit;
+use App\Http\Middleware\ResolveResidentialComplex;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -20,22 +25,47 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('v1')->group(function () {
-    // Buildings (Residential Complexes) CRUD
-    //
-    // DEUDA (fuera del alcance de T17): este grupo sigue sin middleware de
-    // sesion, sin `auth` y sin resolucion del conjunto activo, de modo que
-    // expone datos sin autenticar. Queda para un work unit propio.
-    Route::apiResource('buildings', ResidentialComplexController::class)
-        ->parameters(['buildings' => 'building'])
-        ->names([
-            'index' => 'api.buildings.index',
-            'store' => 'api.buildings.store',
-            'show' => 'api.buildings.show',
-            'update' => 'api.buildings.update',
-            'destroy' => 'api.buildings.destroy',
-        ]);
-});
+/*
+|--------------------------------------------------------------------------
+| Conjuntos residenciales
+|--------------------------------------------------------------------------
+|
+| `/api/v1/buildings` expone los conjuntos residenciales (`ResidentialComplex`).
+| La superficie exige sesion, cookies, CSRF y `auth`: el alcance del actor se
+| resuelve en el servidor contra sus membresias activas (o el catalogo
+| completo para la plataforma) y un conjunto fuera de ese alcance responde
+| 404, sin filtrar su existencia. La baja archiva el conjunto: nunca borra en
+| cascada sus datos.
+|
+*/
+
+Route::prefix('v1')
+    ->middleware([
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ValidateCsrfToken::class,
+        'auth',
+    ])
+    ->group(function (): void {
+        Route::get('buildings', [ResidentialComplexController::class, 'index'])
+            ->name('api.buildings.index');
+
+        Route::post('buildings', [ResidentialComplexController::class, 'store'])
+            ->name('api.buildings.store');
+
+        Route::get('buildings/{building}', [ResidentialComplexController::class, 'show'])
+            ->middleware(ResolveResidentialComplex::class)
+            ->name('api.buildings.show');
+
+        Route::match(['put', 'patch'], 'buildings/{building}', [ResidentialComplexController::class, 'update'])
+            ->middleware(ResolveResidentialComplex::class)
+            ->name('api.buildings.update');
+
+        Route::delete('buildings/{building}', [ResidentialComplexController::class, 'destroy'])
+            ->middleware(ResolveResidentialComplex::class)
+            ->name('api.buildings.destroy');
+    });
 
 /*
 |--------------------------------------------------------------------------
@@ -56,10 +86,10 @@ Route::prefix('v1')->group(function () {
 
 Route::prefix('v1')
     ->middleware([
-        \Illuminate\Cookie\Middleware\EncryptCookies::class,
-        \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
-        \Illuminate\Session\Middleware\StartSession::class,
-        \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ValidateCsrfToken::class,
         'auth',
         ResolveActiveComplex::class,
     ])
@@ -104,10 +134,10 @@ Route::prefix('v1')
 
 Route::prefix('v1/core')
     ->middleware([
-        \Illuminate\Cookie\Middleware\EncryptCookies::class,
-        \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
-        \Illuminate\Session\Middleware\StartSession::class,
-        \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ValidateCsrfToken::class,
         'auth',
         ResolveActiveComplex::class,
     ])

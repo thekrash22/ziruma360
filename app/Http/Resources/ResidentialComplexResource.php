@@ -2,9 +2,19 @@
 
 namespace App\Http\Resources;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Gate;
 
+/**
+ * Proyeccion de un conjunto residencial.
+ *
+ * La identidad del conjunto (nombre, codigo, ubicacion y estado) es visible
+ * para quien pertenece a el. Los datos de gobierno (`legal_identifier` y
+ * `settings`) solo se exponen a quien administra la configuracion del
+ * conjunto o a la plataforma.
+ */
 class ResidentialComplexResource extends JsonResource
 {
     /**
@@ -14,11 +24,10 @@ class ResidentialComplexResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        return [
+        $data = [
             'uuid' => $this->uuid,
             'name' => $this->name,
             'code' => $this->code,
-            'legal_identifier' => $this->legal_identifier,
             'address' => $this->address,
             'city' => $this->city,
             'state' => $this->state,
@@ -27,9 +36,29 @@ class ResidentialComplexResource extends JsonResource
             'currency_code' => $this->currency_code,
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
-            'settings' => $this->settings ?? [],
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
+
+        if ($this->mayViewGovernance($request)) {
+            $data['legal_identifier'] = $this->legal_identifier;
+            $data['settings'] = $this->settings ?? [];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Los datos de gobierno exigen el permiso de configuracion.
+     */
+    private function mayViewGovernance(Request $request): bool
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return false;
+        }
+
+        return Gate::allows('viewGovernance', $this->resource);
     }
 }

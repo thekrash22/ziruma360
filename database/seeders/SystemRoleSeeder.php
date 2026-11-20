@@ -49,6 +49,7 @@ class SystemRoleSeeder extends Seeder
         return [
             SystemRole::PLATFORM_ADMIN->value => [
                 // Full access
+                ComplexPermission::COMPLEX_CREATE,
                 ComplexPermission::COMPLEX_VIEW,
                 ComplexPermission::COMPLEX_EDIT,
                 ComplexPermission::COMPLEX_MANAGE_MEMBERS,

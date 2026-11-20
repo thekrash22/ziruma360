@@ -3,7 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Enums\ResidentialComplexStatus;
+use App\Models\ResidentialComplex;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 
@@ -11,22 +14,24 @@ class StoreResidentialComplexRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
+     *
+     * El alta de conjuntos es un permiso de plataforma (`complex.create`).
      */
     public function authorize(): bool
     {
-        return true;
+        return Gate::allows('create', ResidentialComplex::class);
     }
 
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:50', 'unique:residential_complexes,code'],
+            'code' => ['required', 'string', 'max:50', Rule::unique('residential_complexes', 'code')],
             'legal_identifier' => ['nullable', 'string', 'max:50'],
             'address' => ['required', 'string', 'max:500'],
             'city' => ['required', 'string', 'max:100'],

@@ -2,228 +2,756 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ComplexPermission;
+use App\Enums\MembershipStatus;
 use App\Enums\ResidentialComplexStatus;
+use App\Enums\SystemRole;
 use App\Models\ResidentialComplex;
+use App\Models\ResidentialComplexMembership;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\Feature\Core\CoreTestCase;
 
-class ResidentialComplexApiTest extends TestCase
+/**
+ * Superficie `/api/v1/buildings` (conjuntos residenciales).
+ *
+ * La API de conjuntos exige sesion y `auth`, resuelve el alcance del actor
+ * en el servidor contra sus membresias activas y aísla los conjuntos que no
+ * estan en su alcance (404). El alta exige `complex.create` (plataforma) y
+ * la baja archiva: nunca borra en cascada.
+ */
+class ResidentialComplexApiTest extends CoreTestCase
 {
     use RefreshDatabase;
 
-    public function test_can_list_buildings(): void
+    // ---------------------------------------------------------------- guests
+
+    public function test_guest_cannot_list_buildings(): void
     {
-        ResidentialComplex::factory()->count(3)->create();
-
-        $response = $this->getJson('/api/v1/buildings');
-
-        $response->assertOk()
-            ->assertJsonStructure([
-                'data' => [
-                    '*' => [
-                        'uuid',
-                        'name',
-                        'code',
-                        'address',
-                        'city',
-                        'status',
-                        'status_label',
-                    ],
-                ],
-                'meta',
-                'links',
-            ])
-            ->assertJsonCount(3, 'data');
+        $this->getJson('/api/v1/buildings')->assertUnauthorized();
     }
+
+    public function test_guest_cannot_create_a_building(): void
+    {
+        $this->postJson('/api/v1/buildings', $this->payload())->assertUnauthorized();
+    }
+
+    public function test_guest_cannot_show_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        $this->getJson("/api/v1/buildings/{$complex->uuid}")->assertUnauthorized();
+    }
+
+    public function test_guest_cannot_update_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        $this->patchJson("/api/v1/buildings/{$complex->uuid}", ['name' => 'Otro nombre'])
+            ->assertUnauthorized();
+    }
+
+    public function test_guest_cannot_archive_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        $this->deleteJson("/api/v1/buildings/{$complex->uuid}")->assertUnauthorized();
+    }
+
+    // ------------------------------------------------------------- alcance
+
+    public function test_actor_without_active_membership_cannot_list_buildings(): void
+    {
+        $this->makeComplex('Torres del Norte');
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+    }
+
+    public function test_listing_only_returns_the_complexes_of_the_actor(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user] = $this->makeMember($mine, SystemRole::RESIDENT);
+
+        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.uuid', $mine->uuid);
+        $this->assertNotContains($other->uuid, array_column($response->json('data'), 'uuid'));
+    }
+
+    public function test_platform_admin_sees_the_whole_catalog(): void
+    {
+        $first = $this->makeComplex('Conjunto Uno');
+        $second = $this->makeComplex('Conjunto Dos');
+
+        [$user] = $this->makeMember($first, SystemRole::PLATFORM_ADMIN);
+
+        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+
+        $uuids = array_column($response->json('data'), 'uuid');
+        $this->assertContains($first->uuid, $uuids);
+        $this->assertContains($second->uuid, $uuids);
+    }
+
+    public function test_member_of_another_complex_cannot_see_it(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user] = $this->makeMember($mine, SystemRole::RESIDENT);
+
+        $this->actingAs($user)->getJson("/api/v1/buildings/{$other->uuid}")->assertNotFound();
+    }
+
+    public function test_member_of_another_complex_cannot_update_it(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user] = $this->makeMember($mine, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$other->uuid}", ['name' => 'Secuestrado'])
+            ->assertNotFound();
+
+        $this->assertSame('Conjunto Ajeno', $other->fresh()->name);
+    }
+
+    public function test_member_of_another_complex_cannot_archive_it(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user] = $this->makeMember($mine, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)->deleteJson("/api/v1/buildings/{$other->uuid}")->assertNotFound();
+
+        $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $other->fresh()->status);
+    }
+
+    public function test_returns_404_for_nonexistent_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/buildings/2c1f4b0e-0000-4000-8000-000000000000')
+            ->assertNotFound();
+    }
+
+    public function test_returns_404_for_a_malformed_identifier(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)->getJson('/api/v1/buildings/no-es-un-uuid')->assertNotFound();
+    }
+
+    // -------------------------------------------------------------- listado
 
     public function test_can_filter_buildings_by_status(): void
     {
-        ResidentialComplex::factory()->create(['status' => ResidentialComplexStatus::DRAFT]);
-        ResidentialComplex::factory()->create(['status' => ResidentialComplexStatus::ACTIVE]);
-        ResidentialComplex::factory()->create(['status' => ResidentialComplexStatus::ACTIVE]);
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
 
-        $response = $this->getJson('/api/v1/buildings?status=active');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
-        $response->assertOk()
-            ->assertJsonCount(2, 'data');
+        $response = $this->actingAs($user)
+            ->getJson('/api/v1/buildings?status=active')
+            ->assertOk();
+
+        $response->assertJsonCount(1, 'data');
     }
 
     public function test_can_search_buildings_by_name_or_code(): void
     {
-        ResidentialComplex::factory()->create(['name' => 'Torre Norte', 'code' => 'tn-001']);
-        ResidentialComplex::factory()->create(['name' => 'Torre Sur', 'code' => 'ts-001']);
-        ResidentialComplex::factory()->create(['name' => 'Edificio Este', 'code' => 'ee-001']);
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
-        $response = $this->getJson('/api/v1/buildings?search=Torre');
+        $response = $this->actingAs($user)
+            ->getJson('/api/v1/buildings?search=torres')
+            ->assertOk();
 
-        $response->assertOk()
-            ->assertJsonCount(2, 'data');
+        $response->assertJsonCount(1, 'data');
+
+        $this->actingAs($user)->getJson('/api/v1/buildings?search='.$complex->code)
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
     }
 
-    public function test_can_create_building(): void
+    public function test_listing_rejects_an_unknown_order_column(): void
     {
-        $data = [
-            'name' => 'Conjunto Residencial Las Américas',
-            'code' => 'lasamericas-001',
-            'address' => 'Calle 100 #45-67',
-            'city' => 'Bogotá',
-            'state' => 'Cundinamarca',
-            'country_code' => 'CO',
-        ];
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
-        $response = $this->postJson('/api/v1/buildings', $data);
+        $this->actingAs($user)
+            ->getJson('/api/v1/buildings?order_by=secret_column')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('order_by');
+    }
 
-        $response->assertCreated()
-            ->assertJsonFragment([
-                'name' => 'Conjunto Residencial Las Américas',
-                'code' => 'lasamericas-001',
-                'city' => 'Bogotá',
-                'status' => 'draft',
-            ]);
+    public function test_listing_rejects_an_invalid_order_direction(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
-        $this->assertDatabaseHas('residential_complexes', [
-            'name' => 'Conjunto Residencial Las Américas',
-            'code' => 'lasamericas-001',
-        ]);
+        $this->actingAs($user)
+            ->getJson('/api/v1/buildings?order_dir=sideways')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('order_dir');
+    }
+
+    public function test_listing_rejects_an_out_of_range_per_page(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/buildings?per_page=0')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('per_page');
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/buildings?per_page=1000')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('per_page');
+    }
+
+    // ----------------------------------------------------------------- alta
+
+    public function test_complex_admin_cannot_create_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+    }
+
+    public function test_platform_admin_can_create_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $response = $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertCreated();
+
+        $response->assertJsonPath('data.status', ResidentialComplexStatus::DRAFT->value);
+
+        $this->assertDatabaseHas('residential_complexes', ['name' => 'Conjunto Nuevo']);
     }
 
     public function test_create_building_requires_mandatory_fields(): void
     {
-        $response = $this->postJson('/api/v1/buildings', []);
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
-        $response->assertUnprocessable()
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', [])
+            ->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'code', 'address', 'city']);
     }
 
     public function test_create_building_validates_unique_code(): void
     {
-        ResidentialComplex::factory()->create(['code' => 'existing-code']);
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
-        $data = [
-            'name' => 'New Building',
-            'code' => 'existing-code',
-            'address' => 'Some Address',
-            'city' => 'Some City',
-        ];
-
-        $response = $this->postJson('/api/v1/buildings', $data);
-
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['code']);
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload(['code' => $complex->code]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('code');
     }
 
-    public function test_can_show_building(): void
+    public function test_update_building_validates_unique_code(): void
     {
-        $complex = ResidentialComplex::factory()->create([
-            'name' => 'Conjunto El Parque',
-            'code' => 'parque-001',
-        ]);
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
-        $response = $this->getJson("/api/v1/buildings/{$complex->uuid}");
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['code' => $other->code])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('code');
 
-        $response->assertOk()
-            ->assertJsonFragment([
-                'uuid' => $complex->uuid,
-                'name' => 'Conjunto El Parque',
-                'code' => 'parque-001',
-            ]);
+        $this->assertNotSame($other->code, $complex->fresh()->code);
     }
 
-    public function test_can_update_building(): void
+    // --------------------------------------------------------------- edicion
+
+    public function test_complex_admin_can_update_the_building(): void
     {
-        $complex = ResidentialComplex::factory()->create([
-            'status' => ResidentialComplexStatus::DRAFT,
-        ]);
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
-        $data = [
-            'name' => 'Conjunto El Parque Actualizado',
-        ];
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertOk()
+            ->assertJsonPath('data.city', 'Medellin');
 
-        $response = $this->putJson("/api/v1/buildings/{$complex->uuid}", $data);
-
-        $response->assertOk()
-            ->assertJsonFragment([
-                'uuid' => $complex->uuid,
-                'name' => 'Conjunto El Parque Actualizado',
-            ]);
-
-        $this->assertDatabaseHas('residential_complexes', [
-            'uuid' => $complex->uuid,
-            'name' => 'Conjunto El Parque Actualizado',
-        ]);
+        $this->assertSame('Medellin', $complex->fresh()->city);
     }
 
-    public function test_can_update_building_status(): void
+    public function test_put_updates_the_building_like_patch_does(): void
     {
-        $complex = ResidentialComplex::factory()->create([
-            'status' => ResidentialComplexStatus::DRAFT,
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->putJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Cali'])
+            ->assertOk()
+            ->assertJsonPath('data.city', 'Cali');
+
+        $this->assertSame('Cali', $complex->fresh()->city);
+    }
+
+    public function test_member_without_edit_permission_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_an_expired_role_assignment_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        // La asignacion del rol vencio: ya no concede nada.
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_an_expired_role_assignment_cannot_archive_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertForbidden();
+
+        $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+    }
+
+    public function test_member_with_a_pending_role_assignment_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_from' => now()->addDay()]
+        );
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_a_role_of_another_complex_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+
+        $user = User::factory()->create();
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
         ]);
 
-        $response = $this->putJson("/api/v1/buildings/{$complex->uuid}", [
-            'status' => 'active',
+        // Rol del otro conjunto con permiso de edicion: no alcanza al
+        // conjunto de la membresia.
+        $otherRole = Role::factory()->complexLevel($other)->create();
+        $otherRole->grantPermission(ComplexPermission::COMPLEX_EDIT);
+        $membership->roles()->attach($otherRole->id);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_a_role_of_another_complex_cannot_read_the_governance_data(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+
+        $user = User::factory()->create();
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
         ]);
 
-        $response->assertOk()
-            ->assertJsonFragment([
-                'status' => 'active',
-                'status_label' => 'Activo',
-            ]);
+        $otherRole = Role::factory()->complexLevel($other)->create();
+        $otherRole->grantPermission(ComplexPermission::COMPLEX_MANAGE_SETTINGS);
+        $membership->roles()->attach($otherRole->id);
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.settings')
+            ->assertJsonMissingPath('data.legal_identifier');
     }
 
     public function test_cannot_change_code_when_not_draft(): void
     {
-        $complex = ResidentialComplex::factory()->create([
-            'status' => ResidentialComplexStatus::ACTIVE,
-        ]);
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
-        $response = $this->putJson("/api/v1/buildings/{$complex->uuid}", [
-            'code' => 'new-code',
-        ]);
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['code' => 'otro-codigo'])
+            ->assertStatus(422);
 
-        $response->assertStatus(422);
+        $this->assertSame($complex->code, $complex->fresh()->code);
     }
 
-    public function test_can_delete_building(): void
+    public function test_archived_complex_is_not_writable(): void
     {
-        $complex = ResidentialComplex::factory()->create([
-            'status' => ResidentialComplexStatus::DRAFT,
-        ]);
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ARCHIVED]);
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
-        $response = $this->deleteJson("/api/v1/buildings/{$complex->uuid}");
-
-        $response->assertOk()
-            ->assertJsonFragment(['message' => 'Conjunto eliminado exitosamente.']);
-
-        $this->assertDatabaseMissing('residential_complexes', [
-            'uuid' => $complex->uuid,
-        ]);
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertStatus(422);
     }
 
-    public function test_cannot_delete_building_with_active_memberships(): void
+    public function test_suspended_complex_is_not_writable(): void
     {
-        $complex = ResidentialComplex::factory()->create();
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::SUSPENDED]);
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
-        $user = \App\Models\User::factory()->create();
-        \App\Models\ResidentialComplexMembership::factory()->create([
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertStatus(422);
+    }
+
+    // ----------------------------------------------------------------- baja
+
+    public function test_delete_archives_the_building_instead_of_deleting_it(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk()
+            ->assertJsonPath('data.status', ResidentialComplexStatus::ARCHIVED->value);
+
+        $this->assertDatabaseHas('residential_complexes', ['uuid' => $complex->uuid]);
+        $this->assertSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+    }
+
+    public function test_delete_does_not_cascade_to_the_data_of_the_complex(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $person = $this->makePerson($complex);
+        $unit = $this->makeUnit($complex);
+
+        $this->actingAs($user)->deleteJson("/api/v1/buildings/{$complex->uuid}")->assertOk();
+
+        $this->assertDatabaseHas('people', ['id' => $person->id]);
+        $this->assertDatabaseHas('property_units', ['id' => $unit->id]);
+    }
+
+    public function test_member_without_edit_permission_cannot_archive_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertForbidden();
+
+        $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+    }
+
+    // ---------------------------------------------------------- proyeccion
+
+    public function test_settings_and_legal_identifier_are_hidden_without_the_permission(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['legal_identifier' => '900123456-7']);
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $response = $this->actingAs($user)
+            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk();
+
+        $response->assertJsonMissingPath('data.legal_identifier');
+        $response->assertJsonMissingPath('data.settings');
+        $response->assertJsonPath('data.name', 'Torres del Norte');
+    }
+
+    public function test_settings_and_legal_identifier_are_visible_with_the_permission(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['legal_identifier' => '900123456-7']);
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $response = $this->actingAs($user)
+            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk();
+
+        $response->assertJsonPath('data.legal_identifier', '900123456-7');
+        $response->assertJsonStructure(['data' => ['settings']]);
+    }
+
+    public function test_listing_hides_the_governance_data_for_members_without_the_permission(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['legal_identifier' => '900123456-7']);
+        [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+
+        $response->assertJsonMissingPath('data.0.legal_identifier');
+        $response->assertJsonMissingPath('data.0.settings');
+    }
+
+    // ------------------------------------------------------------- Plateau
+
+    public function test_a_suspended_membership_does_not_grant_access(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $membership->update(['status' => MembershipStatus::SUSPENDED]);
+
+        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+    }
+
+    public function test_a_revoked_platform_membership_does_not_grant_the_catalog(): void
+    {
+        $complex = $this->makeComplex('Conjunto Uno');
+        $other = $this->makeComplex('Conjunto Dos');
+
+        [$user, $membership] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+        $membership->update(['status' => MembershipStatus::REVOKED]);
+
+        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+
+        $this->assertDatabaseHas('residential_complexes', ['uuid' => $other->uuid]);
+    }
+
+    public function test_a_suspended_platform_membership_cannot_create_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+        $membership->update(['status' => MembershipStatus::SUSPENDED]);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('residential_complexes', ['name' => 'Conjunto Nuevo']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    // ------------------------------------------- vigencia del rol de plataforma
+
+    public function test_platform_admin_with_an_expired_role_assignment_does_not_see_the_whole_catalog(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        // La asignacion del rol de plataforma vencio: ya no concede el
+        // catalogo completo.
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+
+        $uuids = array_column($response->json('data'), 'uuid');
+        $this->assertContains($mine->uuid, $uuids);
+        $this->assertNotContains($other->uuid, $uuids);
+    }
+
+    public function test_platform_admin_with_an_expired_role_assignment_cannot_create_a_building(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+    }
+
+    public function test_platform_admin_with_a_pending_role_assignment_cannot_create_a_building(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_from' => now()->addDay()]
+        );
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+    }
+
+    public function test_platform_admin_with_an_expired_role_assignment_cannot_archive_another_complex(): void
+    {
+        $mine = $this->makeComplex('Conjunto Propio');
+        $other = $this->makeComplex('Conjunto Ajeno');
+
+        [$user, $membership] = $this->makeMember($mine, SystemRole::PLATFORM_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::PLATFORM_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$other->uuid}")
+            ->assertNotFound();
+
+        $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $other->fresh()->status);
+    }
+
+    // ------------------------------------------------- escritura de gobierno
+
+    public function test_member_with_only_edit_permission_cannot_write_the_settings(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        [$user, $membership] = $this->makeMemberWithCustomRole($complex, [
+            ComplexPermission::COMPLEX_VIEW,
+            ComplexPermission::COMPLEX_EDIT,
+        ]);
+
+        $original = $complex->settings;
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+                'settings' => ['regional' => ['timezone' => 'America/Bogota']],
+            ])
+            ->assertForbidden();
+
+        $this->assertSame($original, $complex->fresh()->settings);
+    }
+
+    public function test_member_with_only_edit_permission_cannot_write_the_legal_identifier(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        [$user, $membership] = $this->makeMemberWithCustomRole($complex, [
+            ComplexPermission::COMPLEX_VIEW,
+            ComplexPermission::COMPLEX_EDIT,
+        ]);
+
+        $original = $complex->legal_identifier;
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['legal_identifier' => 'NIT-EDITADO'])
+            ->assertForbidden();
+
+        $this->assertSame($original, $complex->fresh()->legal_identifier);
+    }
+
+    public function test_complex_admin_can_write_the_governance_data(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+                'legal_identifier' => 'NIT-900',
+                'settings' => ['regional' => ['timezone' => 'America/Bogota']],
+            ])
+            ->assertOk();
+
+        $fresh = $complex->fresh();
+        $this->assertSame('NIT-900', $fresh->legal_identifier);
+        $this->assertSame(
+            ['regional' => ['timezone' => 'America/Bogota']],
+            $fresh->settings
+        );
+    }
+
+    /**
+     * Miembro activo con un rol propio que lleva solo los permisos indicados.
+     *
+     * @param  array<int, ComplexPermission>  $permissions
+     * @return array{0: User, 1: ResidentialComplexMembership}
+     */
+    private function makeMemberWithCustomRole(ResidentialComplex $complex, array $permissions): array
+    {
+        $user = User::factory()->create();
+
+        $membership = ResidentialComplexMembership::factory()->create([
             'user_id' => $user->id,
             'residential_complex_id' => $complex->id,
-            'status' => \App\Enums\MembershipStatus::ACTIVE,
+            'status' => MembershipStatus::ACTIVE,
         ]);
 
-        $response = $this->deleteJson("/api/v1/buildings/{$complex->uuid}");
+        $role = Role::factory()->create();
+        foreach ($permissions as $permission) {
+            $role->grantPermission($permission);
+        }
+        $membership->roles()->attach($role->id);
 
-        $response->assertStatus(422)
-            ->assertJsonFragment(['message' => 'No se puede eliminar un conjunto con membresías activas.']);
-
-        $this->assertDatabaseHas('residential_complexes', [
-            'uuid' => $complex->uuid,
-        ]);
+        return [$user, $membership];
     }
 
-    public function test_returns_404_for_nonexistent_building(): void
+    private function payload(array $overrides = []): array
     {
-        $response = $this->getJson('/api/v1/buildings/nonexistent-uuid');
-
-        $response->assertNotFound();
+        return array_merge([
+            'name' => 'Conjunto Nuevo',
+            'code' => 'conjunto-nuevo-'.uniqid(),
+            'address' => 'Calle 1 # 2-3',
+            'city' => 'Bogota',
+        ], $overrides);
     }
 }
