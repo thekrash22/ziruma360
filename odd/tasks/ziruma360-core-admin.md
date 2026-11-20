@@ -135,6 +135,14 @@
 
 **S64.** Pruebas de la regla: sin conjunto resuelto, una consulta a un modelo con el ambito global no devuelve filas; con conjunto resuelto, devuelve solo las de ese conjunto; en consola no se filtra. La prueba end-to-end de dos personas (L64, commit `a7f5f26`) se mantiene: la segunda persona no ve ni el conjunto de la primera ni los de otras.
 
+**S69.** Matriz de §1.3, celdas sin respaldo (seis). `doorman` recibe `building.view`, `floor.view` y `unit.view` ("Consultar estructura física: P"); `owner` recibe `occupancy.manage` ("Gestionar ocupantes de su unidad: P"); `resident` y `tenant` reciben `occupancy.view`, `occupancy.manage`, `employment.view` y `employment.manage_unit` ("Gestionar ocupantes de su unidad: P" y "Gestionar empleados de su unidad: P (si delega)"); `co_owner` recibe `unit.manage` ("Según sus derechos: copropietario gestiona sus inmuebles").
+
+**S70.** Plataforma sin permisos de mas. `platform_admin` conserva `complex.create` ("Crear / suspender conjunto: Plataforma ✓") y pierde del conjunto sembrado `complex.edit`, `complex.manage_settings` y `complex.manage_members`, que la matriz marca como "—" para la plataforma. Su alcance global **no cambia**: las policies lo reconocen por `isPlatformAdmin()`, no por el permiso sembrado, asi que la plataforma sigue administrando conjuntos de terceros y el propio `status` del conjunto.
+
+**S71.** Prueba de la matriz (§6, fila "Permisos: cada rol de la matriz puede/no puede ejecutar cada accion"). Un test verifica, para cada rol de sistema, el conjunto **exacto** de permisos sembrados contra la matriz de §1.3, de modo que cualquier deriva futura rompa la suite en vez de quedar escondida en el seeding.
+
+**S72.** Alcance de la matriz: las celdas que ya tienen superficie HTTP (estructura fisica, unidades, personas, titularidad) se comprueban ademas de forma funcional; las celdas de ocupantes y empleados quedan **declaradas** (permiso sembrado y verificado por el contrato) hasta que exista su superficie, que es el work unit T23.
+
 
 ---
 
@@ -161,6 +169,7 @@
 | T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `d09f1d1` (RED 13 fallos, GREEN 17 pruebas) |
 | T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
 | T19 | S58-S61 | Inline (rama `fix/complex-context-leak`, desde `stg`) | Commits `a24fb49` (fix) + `a7f5f26` (prueba end-to-end) |
+| T21 | S69-S72 | Inline (rama `feat/permission-matrix`, desde `stg`) | pend |
 
 ---
 
@@ -182,6 +191,7 @@
 | T16 | Suite transversal §6 sobre T7–T15 (aislamiento a nivel de endpoint, alcance de propiedad, titularidad con historial y auditoría, políticas tipadas y auditadas, privacidad de portería). Sin migraciones nuevas | T7-T15 | Alta | ✅ Done (specs S31-S37, rama `feat/core-transversal-suite`, 320 pruebas / 785 assertions, revisión nativa aprobada y quemada) |
 | T17 | Retirar el modelo legacy (`unidades`, `personas`, `persona_unidad`) y migrar sus rutas web (`/units`, `/people`) y API (`/api/v1/units`, `/api/v1/people`) a `property_units` y `people` | T12 | Alta |
 | T18 | Cerrar la API de conjuntos: `auth` y alcance resuelto en servidor, permiso `complex.create`, baja por archivado y proyección de `settings`/`legal_identifier` por permiso | T12 | Alta |
+| T21 | Matriz §1.3 completa: las seis celdas sin respaldo, la plataforma sin permisos de mas y la prueba fila×columna de la matriz | T18 | Alta | 🔄 En curso (specs S69-S72) |
 
 ---
 
@@ -635,6 +645,18 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 (d) **Revision nativa.** La ronda anterior (`review-23737772ba0b33bd`) quedo escalada y detenida (L65) por `R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY`; ese lineage queda terminal y su liberacion es decision del mantenedor. Para el codigo corregido, el `assess` devuelve riesgo medio con `reviewDue: false` (`under_budget`): el proveedor no exige otra ronda y el plan deja la verificacion en el verificador independiente.
 
 (e) **Commits.** `60163fe` (fix del ambito global y adaptacion de los 11 archivos de test) sobre `d63ff56`.
+
+**L70.** Apertura de T21 (matriz §1.3 completa), con las specs S69-S72.
+
+(a) **Origen del trabajo.** La revision del core (L67, "revisa para ver que nos falta de core") dejo la matriz de permisos de §1.3 con **seis celdas sin respaldo** y \`platform_admin\` con permisos de mas: el administrador de conjunto no podia administrar los ocupantes de su unidad, el residente y el arrendatario no tenian ningun permiso de ocupaciones ni de empleados de su unidad, el copropietario no podia administrar sus inmuebles y la porteria no podia consultar la estructura fisica. La matriz era fiction: nadie la habia hecho verificable.
+
+(b) **Decision del usuario (verbatim):** "T21 Matriz §1.3 completa" como proxima frontera, y "Push ahora" para la entrega de T20.
+
+(c) **Alcance.** (1) Las seis celdas de S69 en el seeding de roles. (2) La plataforma sin los permisos de mas de S70, sin cambiar su alcance global (las policies la reconocen por \`isPlatformAdmin()\`, no por el permiso sembrado). (3) La prueba de la matriz de S71, que es la fila que §6 pide y que hasta ahora no existia. (4) El alcance de S72: las celdas con superficie HTTP se comprueban de forma funcional y las de ocupantes y empleados quedan **declaradas** hasta que exista su superficie (work unit T23).
+
+(d) **Rama y entrega.** \`feat/permission-matrix\` creada desde \`stg\` (\`dfa7a24\`), work unit propio con PR propio y base \`stg\`. Nota de coexistencia: T20 todavia no esta mergeada en \`stg\`, asi que este doc no tiene las entradas de T20 (S65-S68, L67-L69); cuando se mergee el PR de T20 habra que resolver el conflicto de este doc de forma explicita, como en L50.
+
+(e) **Deuda que deja T21:** las claves de permiso de los dominios que aun no tienen superficie (leases, autorizaciones, areas comunes, uso exclusivo, relaciones, apartamentos, tipologias, modulos y roles) siguen sin existir en el catalogo: es trabajo de T23, que es quien construira esas superficies y necesitara esas claves.
 
 ## Delivery
 
