@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Web;
 
+use App\Enums\MembershipStatus;
 use App\Enums\PropertyUnitStatus;
 use App\Enums\SystemRole;
 use App\Enums\TipoDocumento;
@@ -10,6 +11,9 @@ use App\Models\BuildingFloor;
 use App\Models\Person;
 use App\Models\PropertyUnit;
 use App\Models\ResidentialComplex;
+use App\Models\ResidentialComplexMembership;
+use App\Models\Role;
+use App\Models\User;
 use Inertia\Testing\AssertableInertia;
 use Tests\Feature\Core\CoreTestCase;
 
@@ -125,9 +129,16 @@ class UnitsPeoplePagesTest extends CoreTestCase
     public function test_a_role_without_unit_permissions_cannot_list_the_units(): void
     {
         $complex = $this->makeComplex('Torres');
-        [$doorman] = $this->makeMember($complex, SystemRole::DOORMAN);
+        // Desde la matriz de §1.3 (S69) todos los roles del catalogo de
+        // sistema tienen permiso de unidades: el actor sin permisos es un
+        // miembro con un rol propio sin permisos sembrados.
+        [$user, $role] = $this->makeMemberWithoutUnitPermissions($complex);
 
-        $this->actingAs($doorman)
+        // El fixture tiene que ser genuinamente sin permisos: si una siembra
+        // futura le concediera alguno, el test debe fallar de forma clara.
+        $this->assertSame(0, $role->permissions()->count());
+
+        $this->actingAs($user)
             ->get('/units')
             ->assertForbidden();
     }
@@ -481,6 +492,28 @@ class UnitsPeoplePagesTest extends CoreTestCase
     }
 
     // ==================== Helpers ====================
+
+    /**
+     * Miembro activo con un rol propio sin permisos sembrados.
+     *
+     * @return array{0: User, 1: Role}
+     */
+    private function makeMemberWithoutUnitPermissions(ResidentialComplex $complex): array
+    {
+        $user = User::factory()->create();
+
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        $role = Role::factory()->complexLevel($complex)->create();
+
+        $membership->roles()->attach($role->id);
+
+        return [$user, $role];
+    }
 
     private function makeBuilding(ResidentialComplex $complex, string $name): Building
     {

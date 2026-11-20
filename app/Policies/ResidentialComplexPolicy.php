@@ -21,14 +21,28 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class ResidentialComplexPolicy
 {
+    /**
+     * Lectura de las politicas del conjunto.
+     *
+     * El alcance global de la plataforma no depende del permiso sembrado
+     * (spec S70): lo dan las policies, igual que en `viewGovernance`.
+     */
     public function viewSettings(User $user, ResidentialComplex $complex): bool
     {
-        return $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_VIEW);
+        return $user->isPlatformAdmin()
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_VIEW);
     }
 
+    /**
+     * Escritura de las politicas del conjunto.
+     *
+     * El alcance global de la plataforma no depende del permiso sembrado
+     * (spec S70): lo dan las policies, igual que en `updateGovernance`.
+     */
     public function updateSettings(User $user, ResidentialComplex $complex): bool
     {
-        return $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
+        return $user->isPlatformAdmin()
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
     }
 
     /**
