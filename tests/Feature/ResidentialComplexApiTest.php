@@ -954,6 +954,29 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->assertSame(ResidentialComplexStatus::SUSPENDED, $complex->fresh()->status);
     }
 
+    public function test_a_reactivation_cannot_carry_other_attributes(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::SUSPENDED]);
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->prepareActivatableComplex($complex);
+
+        // Reactivar es la unica escritura admitida sobre un conjunto
+        // suspendido: no puede arrastrar otros atributos.
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+                'status' => ResidentialComplexStatus::ACTIVE->value,
+                'name' => 'Torres Renombradas',
+            ])
+            ->assertStatus(422);
+
+        $fresh = $complex->fresh();
+
+        $this->assertSame('Torres del Norte', $fresh->name);
+        $this->assertSame(ResidentialComplexStatus::SUSPENDED, $fresh->status);
+    }
+
     public function test_a_status_change_is_audited(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
