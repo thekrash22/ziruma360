@@ -3,8 +3,9 @@
 namespace App\Models;
 
 use App\Enums\BuildingStatus;
-use App\Models\Concerns\BelongsToComplex;
 use App\Enums\BuildingType;
+use App\Models\Concerns\BelongsToComplex;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Illuminate\Support\Str;
 
 class Building extends Model
 {
-    use HasFactory, BelongsToComplex;
+    use BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',
@@ -105,7 +106,7 @@ class Building extends Model
     /**
      * Get residential floors only.
      */
-    public function getResidentialFloors(): \Illuminate\Database\Eloquent\Collection
+    public function getResidentialFloors(): Collection
     {
         return $this->floors()
             ->where('floor_type', 'residential')

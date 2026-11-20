@@ -18,7 +18,7 @@ class RoleFactory extends Factory
     {
         return [
             'residential_complex_id' => null,
-            'key' => 'custom_role_' . $this->faker->unique()->numberBetween(1, 9999),
+            'key' => 'custom_role_'.$this->faker->unique()->numberBetween(1, 9999),
             'name' => $this->faker->words(2, true),
             'description' => $this->faker->sentence(),
             'is_system' => false,

@@ -265,5 +265,4 @@ return new class extends Migration
         DB::statement('DROP INDEX IF EXISTS unit_occupancies_primary_contact_unique');
         DB::statement('DROP TABLE IF EXISTS unit_occupancies');
     }
-
 };

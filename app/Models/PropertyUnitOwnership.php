@@ -22,7 +22,7 @@ class PropertyUnitOwnership extends Model
 {
     // La titularidad se audita: RN-C04 y el caso de §6 "Cambio de titularidad
     // genera historial y auditoría".
-    use Auditable, HasFactory, BelongsToComplex;
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

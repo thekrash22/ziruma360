@@ -191,5 +191,4 @@ return new class extends Migration
         DB::statement('DROP INDEX IF EXISTS employments_person_index');
         DB::statement('DROP TABLE IF EXISTS employments');
     }
-
 };

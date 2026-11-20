@@ -40,7 +40,7 @@ class Role extends Model
      */
     public function canBeEdited(): bool
     {
-        return !$this->is_system && $this->is_editable;
+        return ! $this->is_system && $this->is_editable;
     }
 
     /**
@@ -57,6 +57,7 @@ class Role extends Model
     public function hasPermission(string|ComplexPermission $permission): bool
     {
         $key = $permission instanceof ComplexPermission ? $permission->value : $permission;
+
         return $this->permissions()->where('permission_key', $key)->exists();
     }
 

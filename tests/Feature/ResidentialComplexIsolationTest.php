@@ -24,11 +24,11 @@ class ResidentialComplexIsolationTest extends TestCase
         $this->seed(SystemRoleSeeder::class);
     }
 
-    function createComplexWithMembership(string $email, string $complexName): array
+    public function createComplexWithMembership(string $email, string $complexName): array
     {
         $complex = ResidentialComplex::factory()->create([
             'name' => $complexName,
-            'code' => strtolower($complexName) . '-' . uniqid(),
+            'code' => strtolower($complexName).'-'.uniqid(),
         ]);
 
         $user = User::factory()->create(['email' => $email]);
@@ -70,7 +70,7 @@ class ResidentialComplexIsolationTest extends TestCase
     {
         $complex = ResidentialComplex::factory()->create([
             'name' => 'Test Complex',
-            'code' => 'test-complex-' . uniqid(),
+            'code' => 'test-complex-'.uniqid(),
         ]);
 
         $user = User::factory()->create(['email' => 'suspended@test.com']);
@@ -88,7 +88,7 @@ class ResidentialComplexIsolationTest extends TestCase
     {
         $complex = ResidentialComplex::factory()->create([
             'name' => 'Test Complex',
-            'code' => 'test-complex-revoked-' . uniqid(),
+            'code' => 'test-complex-revoked-'.uniqid(),
         ]);
 
         $user = User::factory()->create(['email' => 'revoked@test.com']);
@@ -106,7 +106,7 @@ class ResidentialComplexIsolationTest extends TestCase
     {
         $complex = ResidentialComplex::factory()->create([
             'name' => 'Test Complex',
-            'code' => 'test-complex-active-' . uniqid(),
+            'code' => 'test-complex-active-'.uniqid(),
         ]);
 
         $user = User::factory()->create(['email' => 'active@test.com']);
@@ -125,12 +125,12 @@ class ResidentialComplexIsolationTest extends TestCase
     {
         $complexA = ResidentialComplex::factory()->create([
             'name' => 'Complex A Multi',
-            'code' => 'complex-a-multi-' . uniqid(),
+            'code' => 'complex-a-multi-'.uniqid(),
         ]);
 
         $complexB = ResidentialComplex::factory()->create([
             'name' => 'Complex B Multi',
-            'code' => 'complex-b-multi-' . uniqid(),
+            'code' => 'complex-b-multi-'.uniqid(),
         ]);
 
         $user = User::factory()->create(['email' => 'multi@test.com']);

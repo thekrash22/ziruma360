@@ -11,7 +11,7 @@ use App\Models\UnitLease;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\UnitLease>
+ * @extends Factory<UnitLease>
  */
 class UnitLeaseFactory extends Factory
 {

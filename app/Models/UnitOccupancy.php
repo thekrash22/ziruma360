@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
  */
 class UnitOccupancy extends Model
 {
-    use HasFactory, BelongsToComplex;
+    use BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

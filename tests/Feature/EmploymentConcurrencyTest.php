@@ -154,8 +154,8 @@ class EmploymentConcurrencyTest extends TestCase
     private function employmentInsertSql(array $rows): string
     {
         return sprintf(
-            "INSERT INTO employments (uuid, residential_complex_id, person_id, employment_type, "
-            ."valid_from, status, access_authorized, created_at, updated_at) "
+            'INSERT INTO employments (uuid, residential_complex_id, person_id, employment_type, '
+            .'valid_from, status, access_authorized, created_at, updated_at) '
             ."VALUES ('%s', %d, %d, 'complex_staff', CURRENT_DATE, 'active', false, NOW(), NOW())",
             (string) Str::uuid(),
             $rows['residential_complexes'],

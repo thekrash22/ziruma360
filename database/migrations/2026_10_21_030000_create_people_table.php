@@ -70,5 +70,4 @@ return new class extends Migration
     {
         DB::statement('DROP TABLE IF EXISTS people');
     }
-
 };

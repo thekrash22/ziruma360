@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('unidades', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
-            
+
             // Relación con el conjunto residencial
             $table->foreignId('residential_complex_id')
                 ->constrained('residential_complexes')

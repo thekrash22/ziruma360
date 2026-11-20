@@ -8,7 +8,7 @@ use App\Models\ResidentialComplexModule;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\ResidentialComplexModule>
+ * @extends Factory<ResidentialComplexModule>
  */
 class ResidentialComplexModuleFactory extends Factory
 {

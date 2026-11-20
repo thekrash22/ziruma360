@@ -110,7 +110,7 @@ class UiUnificationSmokeTest extends TestCase
             if (! is_array($entry) || empty($entry['file'])) {
                 continue;
             }
-            $path = public_path('build/' . $entry['file']);
+            $path = public_path('build/'.$entry['file']);
             if (str_ends_with($path, '.js') && is_file($path)) {
                 $compiled .= file_get_contents($path);
             }

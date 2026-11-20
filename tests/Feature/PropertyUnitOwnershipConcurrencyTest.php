@@ -252,8 +252,8 @@ class PropertyUnitOwnershipConcurrencyTest extends TestCase
     private function ownershipInsertSql(array $rows, int $percentage, int $personId): string
     {
         return sprintf(
-            "INSERT INTO property_unit_ownerships (uuid, residential_complex_id, property_unit_id, "
-            ."person_id, ownership_type, percentage, valid_from, status, created_at, updated_at) "
+            'INSERT INTO property_unit_ownerships (uuid, residential_complex_id, property_unit_id, '
+            .'person_id, ownership_type, percentage, valid_from, status, created_at, updated_at) '
             ."VALUES ('%s', %d, %d, %d, '%s', %d, CURRENT_DATE, 'active', NOW(), NOW())",
             (string) Str::uuid(),
             $rows['residential_complexes'],

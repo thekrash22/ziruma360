@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 
 class PropertyUnit extends Model
 {
-    use HasFactory, BelongsToComplex;
+    use BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

@@ -24,7 +24,7 @@ use Illuminate\Support\Str;
  */
 class Employment extends Model
 {
-    use HasFactory, BelongsToComplex;
+    use BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

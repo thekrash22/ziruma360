@@ -115,5 +115,4 @@ return new class extends Migration
         DB::statement('DROP INDEX IF EXISTS unit_leases_residential_complex_id_id_unique');
         DB::statement('DROP TABLE IF EXISTS unit_leases');
     }
-
 };

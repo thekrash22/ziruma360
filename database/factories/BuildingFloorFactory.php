@@ -4,14 +4,15 @@ namespace Database\Factories;
 
 use App\Enums\FloorType;
 use App\Models\Building;
+use App\Models\BuildingFloor;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\BuildingFloor>
+ * @extends Factory<BuildingFloor>
  */
 class BuildingFloorFactory extends Factory
 {
-    protected $model = \App\Models\BuildingFloor::class;
+    protected $model = BuildingFloor::class;
 
     /**
      * Define the model's default state.

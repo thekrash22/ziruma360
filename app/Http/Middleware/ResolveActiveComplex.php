@@ -18,9 +18,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ResolveActiveComplex
 {
-    public function __construct(private readonly ActiveComplexResolver $resolver)
-    {
-    }
+    public function __construct(private readonly ActiveComplexResolver $resolver) {}
 
     public function handle(Request $request, Closure $next): Response
     {

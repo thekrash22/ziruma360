@@ -102,6 +102,7 @@ class ComplexContext
             if ($activeMemberships->count() === 1) {
                 $complexId = $activeMemberships->first()->residential_complex_id;
                 self::setCurrentComplexId($complexId);
+
                 return $complexId;
             }
         }

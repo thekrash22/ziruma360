@@ -11,8 +11,9 @@ use App\Models\RolePermission;
 use App\Models\User;
 use App\Services\ComplexContext;
 use App\Services\PermissionService;
-use Carbon\Carbon;
+use Database\Factories\MembershipRoleFactory;
 use Database\Seeders\SystemRoleSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -77,7 +78,7 @@ class RolePermissionTest extends TestCase
         $role = Role::factory()->create();
         RolePermission::create(['role_id' => $role->id, 'permission_key' => 'unit.view']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         RolePermission::create(['role_id' => $role->id, 'permission_key' => 'unit.view']);
     }
 
@@ -105,7 +106,7 @@ class RolePermissionTest extends TestCase
 
     public function test_membership_role_valid_now(): void
     {
-        $membershipRole = \Database\Factories\MembershipRoleFactory::new()->create([
+        $membershipRole = MembershipRoleFactory::new()->create([
             'valid_from' => now()->subDay(),
             'valid_until' => now()->addDay(),
         ]);
@@ -117,7 +118,7 @@ class RolePermissionTest extends TestCase
 
     public function test_membership_role_expired(): void
     {
-        $membershipRole = \Database\Factories\MembershipRoleFactory::new()->create([
+        $membershipRole = MembershipRoleFactory::new()->create([
             'valid_from' => now()->subDays(10),
             'valid_until' => now()->subDay(),
         ]);
@@ -129,7 +130,7 @@ class RolePermissionTest extends TestCase
 
     public function test_membership_role_pending(): void
     {
-        $membershipRole = \Database\Factories\MembershipRoleFactory::new()->create([
+        $membershipRole = MembershipRoleFactory::new()->create([
             'valid_from' => now()->addDay(),
             'valid_until' => null,
         ]);
@@ -141,7 +142,7 @@ class RolePermissionTest extends TestCase
 
     public function test_membership_role_no_date_restrictions(): void
     {
-        $membershipRole = \Database\Factories\MembershipRoleFactory::new()->create([
+        $membershipRole = MembershipRoleFactory::new()->create([
             'valid_from' => null,
             'valid_until' => null,
         ]);
@@ -153,7 +154,7 @@ class RolePermissionTest extends TestCase
 
     public function test_membership_role_valid_from_only_future(): void
     {
-        $membershipRole = \Database\Factories\MembershipRoleFactory::new()->create([
+        $membershipRole = MembershipRoleFactory::new()->create([
             'valid_from' => now()->addHour(),
             'valid_until' => null,
         ]);
@@ -179,13 +180,13 @@ class RolePermissionTest extends TestCase
         $membership = ResidentialComplexMembership::factory()->create();
         $role = Role::factory()->create();
 
-        \Database\Factories\MembershipRoleFactory::new()->create([
+        MembershipRoleFactory::new()->create([
             'membership_id' => $membership->id,
             'role_id' => $role->id,
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
-        \Database\Factories\MembershipRoleFactory::new()->create([
+        $this->expectException(QueryException::class);
+        MembershipRoleFactory::new()->create([
             'membership_id' => $membership->id,
             'role_id' => $role->id,
         ]);

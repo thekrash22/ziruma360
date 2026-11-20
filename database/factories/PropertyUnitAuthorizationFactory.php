@@ -12,7 +12,7 @@ use App\Models\UnitLease;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\PropertyUnitAuthorization>
+ * @extends Factory<PropertyUnitAuthorization>
  */
 class PropertyUnitAuthorizationFactory extends Factory
 {

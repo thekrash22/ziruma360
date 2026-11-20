@@ -21,7 +21,7 @@ trait BelongsToComplex
         // Solo aplicar el global scope si estamos en un contexto web/API
         // y hay un conjunto activo en la sesión
         static::addGlobalScope('complex', function (Builder $builder) {
-            if (app()->runningInConsole() && !app()->runningUnitTests()) {
+            if (app()->runningInConsole() && ! app()->runningUnitTests()) {
                 return;
             }
 
@@ -48,7 +48,7 @@ trait BelongsToComplex
     public function initializeBelongsToComplex(): void
     {
         // Add residential_complex_id to fillable if not already present
-        if (!in_array('residential_complex_id', $this->fillable ?? [])) {
+        if (! in_array('residential_complex_id', $this->fillable ?? [])) {
             $this->fillable[] = 'residential_complex_id';
         }
     }
@@ -84,6 +84,7 @@ trait BelongsToComplex
     public function scopeForComplex(Builder $query, ResidentialComplex|int $complex): Builder
     {
         $complexId = $complex instanceof ResidentialComplex ? $complex->id : $complex;
+
         return $this->scopeInComplex($query, $complexId);
     }
 }

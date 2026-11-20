@@ -88,6 +88,7 @@ class ResidentialComplexModule extends Model
     public function scopeByModule($query, ComplexModule|string $module)
     {
         $key = $module instanceof ComplexModule ? $module->value : $module;
+
         return $query->where('module_key', $key);
     }
 }

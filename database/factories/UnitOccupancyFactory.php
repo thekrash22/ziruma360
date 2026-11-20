@@ -13,7 +13,7 @@ use App\Models\UnitOccupancy;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\UnitOccupancy>
+ * @extends Factory<UnitOccupancy>
  */
 class UnitOccupancyFactory extends Factory
 {

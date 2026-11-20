@@ -9,9 +9,9 @@ use App\Models\Building;
 use App\Models\BuildingFloor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\Validator;
 
 class BuildingController extends Controller
 {
@@ -57,8 +57,8 @@ class BuildingController extends Controller
         return Inertia::render('Buildings/Index', [
             'buildings' => $buildings,
             'filters' => $request->only(['search', 'building_type', 'status']),
-            'buildingTypes' => array_map(fn($t) => ['value' => $t->value, 'label' => $t->label()], BuildingType::cases()),
-            'statuses' => array_map(fn($s) => ['value' => $s->value, 'label' => $s->label()], BuildingStatus::cases()),
+            'buildingTypes' => array_map(fn ($t) => ['value' => $t->value, 'label' => $t->label()], BuildingType::cases()),
+            'statuses' => array_map(fn ($s) => ['value' => $s->value, 'label' => $s->label()], BuildingStatus::cases()),
         ]);
     }
 
@@ -68,8 +68,8 @@ class BuildingController extends Controller
     public function create(): Response
     {
         return Inertia::render('Buildings/Create', [
-            'buildingTypes' => array_map(fn($t) => ['value' => $t->value, 'label' => $t->label()], BuildingType::cases()),
-            'statuses' => array_map(fn($s) => ['value' => $s->value, 'label' => $s->label()], BuildingStatus::cases()),
+            'buildingTypes' => array_map(fn ($t) => ['value' => $t->value, 'label' => $t->label()], BuildingType::cases()),
+            'statuses' => array_map(fn ($s) => ['value' => $s->value, 'label' => $s->label()], BuildingStatus::cases()),
         ]);
     }
 
@@ -131,7 +131,7 @@ class BuildingController extends Controller
                 'status_label' => $building->status->label(),
                 'created_at' => $building->created_at->toISOString(),
                 'updated_at' => $building->updated_at->toISOString(),
-                'floors' => $building->floors->map(fn($floor) => [
+                'floors' => $building->floors->map(fn ($floor) => [
                     'id' => $floor->id,
                     'uuid' => $floor->uuid,
                     'floor_number' => $floor->floor_number,
@@ -164,8 +164,8 @@ class BuildingController extends Controller
                 'elevator_count' => $building->elevator_count,
                 'status' => $building->status->value,
             ],
-            'buildingTypes' => array_map(fn($t) => ['value' => $t->value, 'label' => $t->label()], BuildingType::cases()),
-            'statuses' => array_map(fn($s) => ['value' => $s->value, 'label' => $s->label()], BuildingStatus::cases()),
+            'buildingTypes' => array_map(fn ($t) => ['value' => $t->value, 'label' => $t->label()], BuildingType::cases()),
+            'statuses' => array_map(fn ($s) => ['value' => $s->value, 'label' => $s->label()], BuildingStatus::cases()),
         ]);
     }
 
@@ -257,6 +257,6 @@ class BuildingController extends Controller
         BuildingFloor::insert($floors);
 
         return redirect()->route('buildings.show', $building->uuid)
-            ->with('success', count($floors) . ' pisos creados exitosamente.');
+            ->with('success', count($floors).' pisos creados exitosamente.');
     }
 }

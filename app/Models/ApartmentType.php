@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class ApartmentType extends Model
 {
-    use HasFactory, BelongsToComplex;
+    use BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',
