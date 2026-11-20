@@ -105,6 +105,22 @@
 
 **S49.** Los parámetros de consulta del listado se validan contra una lista permitida: `order_by` solo acepta columnas ordenables conocidas y `per_page` un entero entre 1 y 100; un valor no permitido responde 422 en lugar de provocar un 500.
 
+**S50.** `property_unit_relations` (§3.7 del spec): tabla que registra la vinculacion entre unidades con `source_property_unit_id`, `target_property_unit_id`, `relation_type` (`annex`, `use_assignment`, `adjacent`, …), `valid_from`, `valid_until`, `status`, `notes`. "Permite historial". Un parqueadero privado es un `property_unit` con `unit_type = private_parking` y un deposito es un `property_unit` con `unit_type = storage`: la vinculacion con el apartamento se registra en esta tabla, no en la titularidad.
+
+**S51.** Garantias a nivel de base de datos de `property_unit_relations`: las dos unidades pertenecen al mismo conjunto (FK compuesta, ACE-C02/ACE-P07), la relacion no puede ser consigo misma, y `valid_until >= valid_from` cuando ambos existen.
+
+**S52.** RN-S05 y ACE-S02: "Relacionar un parqueadero con un apartamento no implica misma titularidad ni otorga permisos. Uso ≠ titularidad ≠ autorización" y "Un parqueadero privado puede existir sin estar asociado a ningún apartamento". La relacion no participa del calculo de alcance del propietario, no crea titularidades y no concede permisos.
+
+**S53.** `common_areas` (§3.8 del spec): `building_id` (nullable), `name`, `code`, `area_type` (`pool`, `social_hall`, `bbq`, `gym`, `playground`, `court`, `terrace`, `parking`, `other`), `description`, `location`, `capacity`, `area_m2`, `is_reservable`, `status`, `features`. "Son distintas de las unidades privadas y de los sistemas de asignación de parqueaderos" y "Las reglas de reserva se dejan preparadas (`is_reservable`) pero el módulo de reservas es futuro".
+
+**S54.** `common_property_exclusive_use_assignments` (§3.9 del spec): `common_area_id` (o bien comun), `property_unit_id` beneficiaria, vigencia, documento de soporte, estado. RN-S06: "Un bien común asignado en uso exclusivo no se registra como propiedad privada. La asignación se separa de la titularidad legal." Segun la [Propuesta] del spec, en esta unidad se crean las tablas sin UI ("Tablas creadas desde el inicio, pero con UI mínima hasta validar el diseño jurídico", decision D-07).
+
+**S55.** `parking_facilities` y `parking_spaces` (§3.10 del spec): en el core se registra la instalacion (nombre, tipo, capacidad total, capacidad operativa, modo de asignacion, estado) y, si aplica, sus espacios numerados; "la logica de reservas, disponibilidad por intervalo y concurrencia pertenece al modulo de rentas cortas".
+
+**S56.** Pruebas de aislamiento multi-tenant de las cuatro tablas nuevas: las FKs compuestas rechazan cruces entre conjuntos a nivel de base de datos (ACE-C02, ACE-P07).
+
+**S57.** Pruebas de dominio de las cuatro tablas nuevas: `CHECK` de vigencia, dominio de `relation_type` y de `area_type`, unicidad de `code` de area comun por conjunto, una relacion no puede ser consigo misma y una asignacion en uso exclusivo no puede apuntar a una unidad de otro conjunto.
+
 ---
 
 ## Tasks
@@ -126,6 +142,9 @@
 | T16 | S31-S37 | Inline (rama `feat/core-transversal-suite`) | Commits `41d80f4` + `12d392d` + `4c1292e` + `31d8c82` + `2322632` + `f8b62bb` + `30590b4` + `61b1820` + `c3871ba` + `c6c8d22` + `957c5bd` |
 | T17 | S38-S41 | Workers (rama `feat/legacy-retirement`, desde `stg`) | Commits `c95aaf3` + `0945ae1` + `5b7c9bf` + `50ee10d` + `6c7098e` + `98b9999` + `0592fcd` + `26ed9ba` + `1e7b730` + `61710f0` |
 | T18 | S42-S49 | Inline (rama `feat/api-buildings-guard`, desde `stg`) | Commits `8b2b850` + `6607256` + `aeb5cc4` + `3ff75d6` + `8241b8a` |
+| T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit `1c9e0e8` (RED 8 fallos, GREEN 9 pruebas) |
+| T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `d09f1d1` (RED 13 fallos, GREEN 17 pruebas) |
+| T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
 
 ---
 
@@ -136,9 +155,9 @@
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
 | T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
 | T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commits 6d66975 + 75f5085) |
-| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
-| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
-| T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
+| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | 🔄 Reabierta (specs S50-S52) |
+| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | 🔄 Reabierta (specs S53-S54, solo tablas por D-07) |
+| T11 | `parking_facilities` + `parking_spaces` | T7 | Media | 🔄 Reabierta (specs S55-S57) |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | ✅ Done (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
@@ -404,9 +423,153 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (e) **Cierre**: plan de correccion de 17 lineas de diff (store revision `sha256:340adc17...`), validador dirigido (`minimax/MiniMax-M2.7`, 16,5 s, 4.167 tokens) **APROBO** la correccion; target final `sha256:a0b7e904...`; `acknowledge-approved` quemo la autoridad con evidencia `gentle-ai.review-acknowledged/v1` (revision consumida `sha256:be4d25f6...`); la entrega sigue la politica ordinaria del repositorio.
 
-**L50.** Integracion de T17 y T18 en la misma rama (tras el merge del PR #15, `15da9e8`). Hechos: (a) `stg` absorbio `feat/legacy-retirement` y la rama `feat/api-buildings-guard` absorbio `stg` con un merge explicito (`95337fe`), porque **las dos ramas no conviven**: ambas editaban la misma region de `routes/api.php` (los imports y los primeros grupos de ruta) y el mismo bloque del feature doc. (b) Resolucion de `routes/api.php`: se conserva el grupo protegido de `/api/v1/buildings` (T18: sesion, cookies, CSRF y `auth`) y se descarta el `apiResource('buildings')` sin proteccion del base, y en el lado de T17 se conserva el grupo "API Legacy re-apuntada al dominio nuevo" (`PropertyUnitController` y `Core\PersonController` con `ResolveActiveComplex`) y se descarta el grupo legacy que apuntaba a `UnidadController` y `PersonaController` (modelos ya eliminados en T17). Los imports de ambos lados se fusionaron sin conflicto. (c) Resolucion del documento: el Log se renumero **una sola vez** (T17 conserva L38-L42 y T18 pasa a L43-L49), con una sola seccion `Delivery` que acumula ambas entregas; el espejo `odd/ziruma360-core-admin/tasks.md` se renumero en consecuencia. (d) Verificacion de la coexistencia (primera vez que T17 y T18 conviven en el mismo arbol): suite completa **453 pruebas / 1.331 assertions** en verde contra PostgreSQL real; Pint limpio (corrijo `fully_qualified_strict_types` en los FQCN del grupo de T17); `route:list` confirma que `/api/v1/buildings` resuelve a `ResidentialComplexController` y que `/api/v1/units` y `/api/v1/people` resuelven a los controladores del dominio nuevo conservando los parametros `unidad` y `persona`. (e) El slice de T18 contra el `stg` nuevo queda en **13 rutas y 1.370 lineas** de diff.
+**L50.** Integracion de T17 y T18 en la misma rama (tras el merge del PR #15, `15da9e8`). Hechos: (a) `stg` absorbio `feat/legacy-retirement` y la rama `feat/api-buildings-guard` absorbio `stg` con un merge explicito (`95337fe`), porque **las dos ramas no conviven**: ambas editaban la misma region de `routes/api.php` (los imports y los primeros grupos de ruta) y el mismo bloque del feature doc. (b) Resolucion de `routes/api.php`: se conserva el grupo protegido de `/api/v1/buildings` (T18: sesion, cookies, CSRF y `auth`) y se descarta el `apiResource('buildings')` sin proteccion del base, y en el lado de T17 se conserva el grupo "API Legacy re-apuntada al dominio nuevo" (`PropertyUnitController` y `Core\PersonController` con `ResolveActiveComplex`) y se descarta el grupo legacy que apuntaba a `UnidadController` y `PersonaController` (modelos ya eliminados en T17). Los imports de ambos lados se fusionaron sin conflicto. (c) Resolucion del documento: el Log se renumero **una sola vez** (T17 conserva L38-L42 y T18 pasa a L43-L49), con una sola seccion `Delivery` que acumula ambas entregas; el espejo `odd/ziruma360-core-admin/tasks.md` se renumero en consecuencia. (d) Verificacion de la coexistencia (primera vez que T17 y T18 conviven en el mismo arbol): suite completa **453 pruebas / 1.331 assertions** en verde contra PostgreSQL real; Pint limpio (corrijo `fully_qualified_strict_types` en los FQCN del grupo de T17); `route:list` confirma que `/api/v1/buildings` resuelve a `ResidentialComplexController` y que `/api/v1/units` y `/api/v1/people` resuelven a los controladores del dominio nuevo conservando los parametros `unidad` y `persona`. (e) El slice de T18 contra el `stg` nuevo queda en **13 rutas y 1.370 lineas** de diff.**L51.** Apertura del work unit de **estructura fisica secundaria (T9, T10 y T11)**: la frontera que el usuario eligio para cerrar el core.
+
+(a) **Solicitud del usuario (verbatim):** "revisemos que nos falta para terminar el core." La revision del estado (feature doc, spec base §3.7-§3.10 y §5, arbol real y entrega en git) concluyo que el nucleo de datos del core esta cerrado (T1-T18, 453 pruebas en verde) pero que faltan las tres tablas del spec §3 (T9-T11), la superficie HTTP de las relaciones, el wizard de onboarding (spec §2) y la carga masiva (ACE-S07, D-09).
+
+(b) **Decision del usuario (verbatim):** "T9-T11: estructura física secundaria", entre las cuatro fronteras ofrecidas (estructura fisica secundaria, superficie de relaciones, onboarding y membresias, deuda tecnica).
+
+(c) **Alcance de esta unidad:** solo dominio: migraciones, modelos, garantias a nivel de base de datos y pruebas de aislamiento y de dominio. La API y la UI de estas entidades, la carga masiva y el onboarding quedan para work units posteriores. T10 se limita a las tablas, sin UI, por la [Propuesta] del spec §3.9 y la decision D-07 (diseno juridico sin definir).
+
+(d) **Specs anadidas:** S50-S52 (`property_unit_relations`, sus garantias, RN-S05 y ACE-S02), S53 (`common_areas`), S54 (`common_property_exclusive_use_assignments` y RN-S06), S55 (`parking_facilities` y `parking_spaces`) y S56-S57 (aislamiento multi-tenant y dominio de las cuatro tablas).
+
+(e) **Rama y entrega:** rama `feat/physical-secondary` creada desde `stg` (`1fcec86`), con tres work units (T9, T10, T11) en commits separados y PRs apilados contra `stg` (uno por work unit), siguiendo la cadena de entrega previa. Los tres work units se ejecutan en serie, no en paralelo: comparten la base de pruebas PostgreSQL `z360_test` en el contenedor `ziruma360-app`.
+
+(f) **TDD:** habilitado (fuente: historial del propio documento, que registra RED y GREEN observados en cada unidad anterior); runner: `docker compose exec -T app php artisan test` (PHPUnit/Pest) contra PostgreSQL real `z360_test` (contenedor `ziruma360-app`: PHP 8.5.11, Laravel 13.37.0). No hay PHP en el host.
+
+(g) **Estado al abrir:** sin RED observado todavia; T9 arranca con sus pruebas.
+
+**L52.** T9 (`property_unit_relations`) implementado y commiteado en `1c9e0e8` (rama `feat/physical-secondary`, base `stg` `1fcec86`).
+
+(a) **Alcance:** tabla `property_unit_relations` con `source_property_unit_id`, `target_property_unit_id`, `relation_type` (`annex`, `use_assignment`, `adjacent`), `valid_from`, `valid_until`, `status` y `notes`, mas el modelo `App\Models\PropertyUnitRelation` y los enums `PropertyUnitRelationType` y `PropertyUnitRelationStatus`. Sin `uuid`: el spec §3.7 no lista ese campo para esta tabla.
+
+(b) **Garantias a nivel de motor** (migracion `2026_11_19_000000_create_property_unit_relations_table.php`): FK compuesta `(residential_complex_id, <unidad>)` hacia `property_units (residential_complex_id, id)` en origen y destino (rechaza cruces entre conjuntos, ACE-C02/ACE-P07), `ON DELETE CASCADE` (una unidad eliminada se lleva sus relaciones), CHECK de no relacion consigo misma, CHECK de vigencia (`valid_until >= valid_from`), CHECK de dominio de `relation_type` y CHECK de dominio de `status`.
+
+(c) **TDD:** RED observado (8 pruebas, 8 fallos, `Class "App\Models\PropertyUnitRelation" not found`) y GREEN con **9 pruebas y 13 assertions** en `tests/Feature/PropertyUnitRelationsTest.php`. Casos cubiertos: alta valida; rechazo de una unidad de otro conjunto (FK compuesta); rechazo de la relacion consigo misma; rechazo de la vigencia invertida; `relation_type` fuera de dominio rechazado por el modelo (enum) y por el motor (CHECK, con insercion directa); parqueadero privado sin apartamento (ACE-S02); la relacion no crea titularidades (RN-S05); la relacion se elimina con su unidad origen.
+
+(d) **Verificacion:** suite completa **462 pruebas / 1.344 assertions** en verde contra PostgreSQL real `z360_test` (453 previas + 9 nuevas); Pint limpio en los cinco archivos nuevos (corrigio `fully_qualified_strict_types` en el modelo y `ordered_imports` en la prueba).
+
+(e) **Slice y revision:** el commit de codigo queda en **7 rutas y 439 lineas** contra la base `1fcec860d8bb9fba39ce827334bd348fce6482d6` (`stg`). El `assess` del proveedor devuelve **riesgo medio** con **`reviewDue: false`** (`under_budget`): no exige ronda nativa para esta generacion. El plan emitido es *writer self-verification*, sin verificador independiente.
+
+(f) **Riesgo:** `Risk: none` (esquema aditivo: crea una tabla nueva y su modelo; no altera datos existentes, ni contratos de otros, ni superficies HTTP).
+
+**L53.** T10 (`common_areas` + `common_property_exclusive_use_assignments`) implementado por un worker (`gentle-ai-worker`, task `mwoj2n7j-1-od98`) y commiteado en `d09f1d1` (rama `feat/physical-secondary`).
+
+(a) **Alcance:** `common_areas` (residential_complex_id, building_id nullable, name, code, area_type con el dominio del spec §3.8, description, location, capacity, area_m2, is_reservable, status, features jsonb) y `common_property_exclusive_use_assignments` (common_area_id, property_unit_id, valid_from, valid_until, document_reference, status), con los modelos `CommonArea` y `CommonPropertyExclusiveUseAssignment` y los enums `CommonAreaType`, `CommonAreaStatus` y `ExclusiveUseAssignmentStatus`. Sin API ni UI, por la [Propuesta] del spec §3.9 y la decision D-07.
+
+(b) **Garantias a nivel de motor:** FK compuesta `(residential_complex_id, building_id)` hacia `buildings (residential_complex_id, id)` con `ON DELETE NO ACTION` (a proposito, no RESTRICT: RESTRICT es inmediato y habria reventado el borrado en cascada del conjunto; NO ACTION se verifica al cierre de la sentencia, de modo que un edificio con areas comunes sigue sin poder borrarse y el conjunto se borra con sus areas); CHECK de dominio de `area_type` y de `status`; CHECK de `capacity` y `area_m2` no negativos; unicidad de `code` por conjunto; FKs compuestas de la asignacion hacia `common_areas` y `property_units` con `ON DELETE RESTRICT`, de modo que el historial de asignaciones se conserva: un bien comun, una unidad o un conjunto con asignaciones no se borra, se desactiva y la asignacion se cierra por estado (`ended`/`revoked`); indice unico parcial por area comun entre las asignaciones activas, para que exista una sola asignacion vigente por bien comun; trigger `BEFORE DELETE` que rechaza el borrado duro de una asignacion (SQLSTATE `restrict_violation`), de modo que el historial es inmutable en el motor y se cierra por estado; trigger `BEFORE TRUNCATE` de sentencia que rechaza el truncado de la tabla (un `TRUNCATE` no dispara los triggers de fila); trigger `BEFORE UPDATE` que hace inmutables el identificador, la fecha de creacion, el conjunto, el area comun, la unidad beneficiaria, `valid_from` y `document_reference`, y solo admite el cierre por estado (`active` -> `ended`/`revoked`); la fecha de fin (`valid_until`) solo se rellena: no se reescribe ni se borra; restriccion de exclusion GiST `common_property_exclusive_use_assignments_no_overlap` que rechaza el solapamiento temporal de vigencias (dos asignaciones del mismo bien comun no pueden coexistir en el tiempo, ni siquiera si la anterior quedo cerrada con fecha de fin futura; se valida con el indice, de modo que dos altas concurrentes no pueden introducir un solape); CHECK de vigencia y de dominio del estado de la asignacion. La migracion crea tambien el indice unico `buildings (residential_complex_id, id)`, que no existia y que la FK compuesta exige. El area comun y la instalacion de parqueadero son elementos estructurales del conjunto, no historial: se desactivan (`status inactive`) y se eliminan con el conjunto en cascada, pero nunca mientras conserven registros dependientes (una asignacion de uso exclusivo o un espacio numerado).
+
+(c) **TDD:** RED observado (13 fallos y 2 pases, `Class "App\Models\CommonArea" not found`) y GREEN con **17 pruebas y 29 assertions** en `tests/Feature/CommonAreasTest.php`, con dos pruebas de triangulacion (borrado en cascada del conjunto con areas y asignaciones, y edificio con areas comunes que no se borra).
+
+(d) **Casos cubiertos:** alta valida; area comun sin edificio; unicidad de `code` por conjunto y su repeticion en otro conjunto; rechazo de un edificio de otro conjunto; dominio de `area_type` y de `status` rechazados por el modelo (enum) y por el motor (CHECK con insercion directa); alta de asignacion; rechazo de unidad o de area comun de otro conjunto; vigencia invertida; estado fuera de dominio; RN-S06 (la asignacion no crea ni modifica titularidades); borrado en cascada del conjunto; edificio con areas comunes no se borra.
+
+(e) **Verificacion del padre:** suite completa **479 pruebas / 1.373 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 211 archivos del proyecto; lectura del codigo entregado (migraciones, modelos y las 17 pruebas) sin hallazgos propios: la semantica `NO ACTION` y el indice unico de `buildings` estan justificados y cubiertos por prueba.
+
+(f) **Slice y revision:** T10 mide **8 rutas y 848 lineas**; el `assess` del proveedor sobre el slice acumulado T9+T10 (15 rutas, 1.305 lineas contra `1fcec860d8bb9fba39ce827334bd348fce6482d6`) devuelve **riesgo medio** con **`reviewDue: false`** (`under_budget`): el proveedor no exige ronda nativa para esta generacion.
+
+(g) **Riesgo:** `Risk: none` (esquema aditivo, sin superficie HTTP ni cambios en datos existentes).
+
+**L54.** T11 (`parking_facilities` + `parking_spaces`) implementado por un worker (`gentle-ai-worker`, task `mwoj7s0w-2-2v2f`) y commiteado en `a491549` (rama `feat/physical-secondary`).
+
+(a) **Alcance:** `parking_facilities` (residential_complex_id, name, facility_type, total_capacity, operational_capacity, assignment_mode, status, notes) y `parking_spaces` (residential_complex_id, parking_facility_id, number, status, notes), con los modelos `ParkingFacility` y `ParkingSpace` y los enums `ParkingFacilityStatus` y `ParkingSpaceStatus`. Sin reservas, disponibilidad ni concurrencia: eso pertenece al modulo de rentas cortas.
+
+(b) **Garantias a nivel de motor:** CHECK de `total_capacity` y `operational_capacity` no negativos y de `operational_capacity <= total_capacity` cuando ambas existen; CHECK de dominio de `status` en las dos tablas; FK compuesta `(residential_complex_id, parking_facility_id)` hacia `parking_facilities (residential_complex_id, id)` con `ON DELETE RESTRICT` (rechaza cruces entre conjuntos y una instalacion con espacios numerados no se borra, se desactiva); unicidad del numero de espacio por instalacion; FK del conjunto con `ON DELETE RESTRICT` (un conjunto con espacios numerados no se borra, se archiva); triggers `BEFORE DELETE` y `BEFORE TRUNCATE` sobre `parking_spaces` que impiden borrar o truncar los espacios: el espacio numerado es historial y se cierra por estado (`inactive`); trigger `BEFORE UPDATE` que deja inmutables el identificador, la fecha de creacion, el conjunto, la instalacion y el numero del espacio (el estado y las notas si se actualizan).
+
+(c) **Decision de dominio:** `facility_type` y `assignment_mode` quedan como cadenas libres porque el spec §3.10 los nombra sin enumerar sus valores; el `status` si cierra el dominio en `active`/`inactive`. `assignment_mode` queda `NOT NULL` porque el spec lo lista como campo de la instalacion.
+
+(d) **TDD:** RED observado (10 fallos y 4 pases, `Class "App\Models\ParkingFacility" not found`) y GREEN con **15 pruebas y 25 assertions** en `tests/Feature/ParkingFacilitiesTest.php`, mas dos pruebas de triangulacion (espacio de un conjunto contra instalacion de otro, y el mismo numero de espacio repetido en otra instalacion del mismo conjunto).
+
+(e) **Verificacion del padre:** suite completa **494 pruebas / 1.398 assertions** en verde contra PostgreSQL real `z360_test` (479 previas + 15 nuevas); Pint limpio sobre los 218 archivos del proyecto; lectura de las dos migraciones y de las 15 pruebas sin hallazgos propios.
+
+(f) **Slice y revision:** T11 mide **7 rutas y 642 lineas**; el `assess` del proveedor sobre el slice acumulado T9+T10+T11 (22 rutas, 1.965 lineas contra `1fcec860d8bb9fba39ce827334bd348fce6482d6`) devuelve **riesgo medio** con **`reviewDue: false`** (`under_budget`): el proveedor no exige ronda nativa para esta generacion.
+
+(g) **Riesgo:** `Risk: none` (esquema aditivo, sin superficie HTTP ni cambios en datos existentes).
+
+(h) **Cierre de la unidad:** las cuatro migraciones nuevas quedan aplicadas en la base de desarrollo; el push y la apertura de los PRs apilados son decision del usuario.
+
+**L55.** Revision nativa (receipt-driven development) del work unit T9-T11 y correccion de los hallazgos del proveedor.
+
+(a) **Revision.** El proveedor rechazo primero el candidato completo del core (176 rutas, 20.660 lineas) por `lens_context_budget_exceeded`, asi que se reviso por work unit. T11 quedo **aprobado** (lineage `review-9eaabdc51711bc78`, lentes de riesgo y confiabilidad). T10+T11 arrojo hallazgos CRITICOS que el padre corrigio.
+
+(b) **Hallazgo `R3-ASSIGNMENT-CASCADE-HISTORY` (CRITICAL, introducido).** Las FKs de `common_property_exclusive_use_assignments` usaban `ON DELETE CASCADE`: borrar un area comun, una unidad o el conjunto borraba en silencio el historial de las asignaciones, contradiciendo el ciclo de vida de cerrar la asignacion por estado (`ended`/`revoked`). Correccion: `ON DELETE RESTRICT` en las tres FKs (conjunto, area comun y unidad), el mismo patron que ya usa el codigo para pisos y edificios (RN-S02/RN-S04). Commit `58a59a4`.
+
+(c) **Hallazgo `R3-EXCLUSIVE-OVERLAP` (CRITICAL, introducido).** El esquema permitia varias asignaciones activas para el mismo area comun con vigencias solapadas: dos unidades podian tener a la vez el uso exclusivo del mismo bien comun. Correccion: indice unico parcial `(residential_complex_id, common_area_id) WHERE status = 'active'`; la asignacion anterior se cierra por estado antes de abrir la siguiente.
+
+(d) **Hallazgo `R3-FACILITY-HARD-DELETE` (CRITICAL, introducido).** Borrar una instalacion de parqueadero borraba en silencio sus espacios numerados. Correccion: `ON DELETE RESTRICT` en la FK de la instalacion; una instalacion con espacios se desactiva, no se borra.
+
+(e) **Hallazgo `R3-DOC-FK-MISMATCH` (informativo).** Este log describia las FKs de asignacion como `CASCADE`; corregido a `RESTRICT` en L53 y L54.
+
+(f) **Verificacion.** Suite completa **499 pruebas / 1.408 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos; focal de los dos archivos de pruebas: 37 pruebas / 64 assertions.
+
+(g) **Riesgo:** `Risk: none` (correccion acotada dentro del work unit, fijada por pruebas a nivel de motor).
+
+**L56.** Segunda ronda nativa sobre el codigo ya corregido (lineage `review-3753b6b50459c5b5`, 18 rutas y 1.747 lineas): el refutador confirmo que los hallazgos CRITICOS de la ronda anterior (`R3-EXCLUSIVE-OVERLAP`, `R3-FACILITY-HARD-DELETE`) quedaron **resueltos**, y el proveedor emitio uno nuevo.
+
+(a) **Hallazgo `R3-ASSIGNMENT-HARD-DELETE` (CRITICAL, introducido).** La fila de asignacion se podia borrar duro: las FKs `ON DELETE RESTRICT` impiden borrar los padres (conjunto, area comun, unidad), pero nada impedia borrar la propia asignacion, destruyendo el historial que este work unit declara inmutable. Correccion: trigger `BEFORE DELETE` sobre `common_property_exclusive_use_assignments` que rechaza el borrado con SQLSTATE `restrict_violation`; la asignacion se cierra por estado (`ended`/`revoked`) y no se borra por ningun camino (Eloquent, SQL directo o cascada).
+
+(b) **Verificacion.** Focal `CommonAreasTest`: 23 pruebas / 41 assertions. Suite completa **501 pruebas / 1.411 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos. La correccion acotada mide **78 lineas de diff** (presupuesto del proveedor: 200).
+
+(c) **Riesgo:** `Risk: none` (garantia de motor fijada por pruebas a nivel de BD).
+
+**L57.** Tercera ronda nativa sobre el codigo ya corregido (lineage `review-ea158b2f2bd597df`, 18 rutas y 1.836 lineas): el proveedor emitio cuatro hallazgos CRITICAL, dos de ellos el mismo defecto reportado por dos lentes.
+
+(a) **`R1-ASSIGNMENT-HISTORY-UPDATE` (CRITICAL, introducido).** El registro de la asignacion era reescribible en el sitio: un backend autorizado a actualizar el modelo podia cambiar el beneficiario, la vigencia o la referencia documental y reescribir el historial de uso exclusivo. Correccion: trigger `BEFORE UPDATE` que hace inmutables el conjunto, el area comun, la unidad beneficiaria, `valid_from` y `document_reference`, y solo admite el cierre por estado (`active` -> `ended`/`revoked`); al cerrar, `valid_until` solo puede rellenarse, nunca borrarse.
+
+(b) **`R1-ASSIGNMENT-TRUNCATE-BYPASS` y `R3-ASSIGNMENT-TRUNCATE-BYPASS` (CRITICAL, introducido).** La guarda de borrado era un trigger de fila y PostgreSQL no dispara los triggers de fila en un `TRUNCATE`, con lo que la tabla se podia truncar. Correccion: trigger `BEFORE TRUNCATE` de sentencia que rechaza el truncado.
+
+(c) **`R1-PARKING-SPACE-HARD-DELETE` (CRITICAL, introducido).** Los espacios numerados seguian siendo borrables en duro, con lo que un `delete` de modelo destruia el registro del espacio y sus notas, que el work unit declara retenidos. Correccion: triggers `BEFORE DELETE` y `BEFORE TRUNCATE` sobre `parking_spaces` (el espacio es historial y se cierra por estado `inactive`) y `ON DELETE RESTRICT` en la FK del conjunto: un conjunto con espacios numerados no se borra, se archiva (decision de producto vigente: archivar, nunca borrar).
+
+(d) **Verificacion.** Focal de los dos archivos de pruebas: 45 pruebas / 73 assertions. Suite completa **507 pruebas / 1.417 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos. La correccion acotada mide **191 lineas de diff** (presupuesto del proveedor: 200).
+
+(e) **Riesgo:** `Risk: none` (garantias de motor fijadas por pruebas a nivel de BD).
+
+**L58.** Cuarta ronda nativa sobre el codigo ya corregido (lineage `review-3293a3c9ed710c81`, 18 rutas y 2.039 lineas): un unico hallazgo CRITICAL y un informativo.
+
+(a) **`R3-ASSIGNMENT-IDENTITY-MUTABLE` (CRITICAL, introducido).** La guarda de actualizacion dejaba mutables el identificador y la fecha de creacion: un SQL directo podia reescribir la identidad estable y la cronologia de auditoria de la asignacion. Correccion: `id` y `created_at` secomparecen en la guarda `BEFORE UPDATE` y pasan a ser inmutables.
+
+(b) **`R3-PARKING-SPACE-HISTORY-REWRITE` (WARNING, informativo).** Los espacios numerados, declarados como historial retenido, seguian con sus campos de identidad, estado y notas reescribibles en masa. Correccion (preventiva, no exigida por el bloqueo): trigger `BEFORE UPDATE` sobre `parking_spaces` que deja inmutables el identificador, la fecha de creacion, el conjunto, la instalacion y el numero, y deja el estado y las notas actualizables.
+
+(c) **Verificacion.** Focal de los dos archivos de pruebas: 48 pruebas / 77 assertions. Suite completa **510 pruebas / 1.421 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos. La correccion acotada mide **100 lineas de diff** (presupuesto del proveedor: 200).
+
+(d) **Riesgo:** `Risk: none` (garantias de motor fijadas por pruebas a nivel de BD).
+
+**L59.** Quinta ronda nativa sobre el codigo ya corregido (lineage `review-4edf64461a5af7c6`, 18 rutas y 2.147 lineas): dos hallazgos CRITICAL y dos informativos.
+
+(a) **`R1-EXCLUSIVE-VALIDITY-OVERLAP` (CRITICAL, introducido).** El indice unico parcial solo cubre las asignaciones activas, de modo que una asignacion cerrada con fecha de fin futura dejaba pasar a una segunda asignacion vigente sobre las mismas fechas: dos unidades con el uso exclusivo del mismo bien comun en el mismo periodo. Correccion: trigger `BEFORE INSERT OR UPDATE` que rechaza el solapamiento temporal de vigencias con `daterange` (`[)`), de modo que el periodo exclusivo de un bien comun es una linea de tiempo sin solapes. Consecuencia de dominio: para abrir una asignacion nueva hay que cerrar la anterior con su fecha de fin.
+
+(b) **`R3-ASSIGNMENT-VALID-UNTIL-REWRITE` (CRITICAL, introducido).** Al cerrar una asignacion se podia reescribir una fecha de fin ya registrada, o vaciarla, contradiciendo la regla de que la vigencia solo se rellena. Correccion: la fecha de fin solo pasa de vacia a informada; nunca se reescribe ni se borra.
+
+(c) **`R1-COMMON-AREA-HARD-DELETE` y `R1-PARKING-FACILITY-HARD-DELETE` (WARNING, informativos).** Un area comun o una instalacion de parqueadero sin registros dependientes se pueden borrar en duro. Quedan como deuda no bloqueante: son elementos estructurales del conjunto, no historial, y el producto archiva los conjuntos en lugar de borrarlos; la eliminacion en cascada con el conjunto se mantiene. El doc describe ahora este comportamiento real en lugar de prometer una inmutabilidad que el esquema no impone.
+
+(d) **Verificacion.** Focal `CommonAreasTest`: 30 pruebas / 49 assertions; focal de los dos archivos: 51 pruebas / 82 assertions. Suite completa **513 pruebas / 1.425 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos. La correccion acotada mide **148 lineas de diff** (presupuesto del proveedor: 200).
+
+(e) **Riesgo:** `Risk: none` (garantias de motor fijadas por pruebas a nivel de BD).
+
+**L60.** Sexta ronda nativa sobre el codigo ya corregido (lineage `review-470e3b44f3895cbf`, 18 rutas y 2.290 lineas): un hallazgo CRITICAL.
+
+(a) **`R3-ASSIGNMENT-OVERLAP-RACE` (CRITICAL, introducido).** La guarda de solapamiento era un trigger `BEFORE INSERT OR UPDATE`, y un trigger no serializa las inserciones concurrentes: dos altas simultaneas del mismo bien comun podian introducir un solape. Correccion: la guarda pasa a ser una **restriccion de exclusion GiST** (`common_property_exclusive_use_assignments_no_overlap`) sobre `(residential_complex_id, common_area_id, daterange(valid_from, COALESCE(valid_until, 'infinity'), '[)'))`, que PostgreSQL valida con el indice y por lo tanto serializa las altas concurrentes. El trigger de solapamiento se elimina para dejar una sola autoridad. La migracion habilita la extension `btree_gist` (`CREATE EXTENSION IF NOT EXISTS`), que es un requisito de despliegue nuevo.
+
+(b) **Verificacion.** Focal `CommonAreasTest`: 31 pruebas / 51 assertions (incluye una prueba que fija que la garantia de no solapamiento es una restriccion de exclusion del catalogo y no un trigger). Suite completa **514 pruebas / 1.427 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos. La correccion acotada mide **63 lineas de diff** (presupuesto del proveedor: 200).
+
+(c) **Riesgo:** `Risk: item 5` (la migracion requiere la extension `btree_gist`, disponible en el build de PostgreSQL del proyecto y creada de forma idempotente; queda anotada como requisito de despliegue en el doc del work unit).
+
+**L61.** Ronda final nativa: el slice T10+T11 queda **APROBADO** y la autoridad queda **quemada**.
+
+(a) **Ronda final.** Autoridad `review-a8e70d38589df9c4` (18 rutas, 2.302 lineas, tier medio, lentes `review-risk` y `review-reliability`, reviewer `minimax/MiniMax-M2.7`): sin hallazgos bloqueantes. Quemado con `gentle-ai.review-acknowledged/v1` (revision consumida `sha256:02aec8bb...`, target `sha256:1fde1fbc...`). La entrega sigue la politica ordinaria del repositorio: el push y la apertura del PR son decisiones del usuario.
+
+(b) **Hallazgos informativos (deuda, no bloquean).** `R1-EXCLUSIVE-CLOSURE-BLOCKS-REUSE` y `R3-TERMINAL-ASSIGNMENT-UNBOUNDED`: cerrar una asignacion sin informar `valid_until` la deja con rango infinito, de modo que el bien comun queda bloqueado para una asignacion posterior hasta que se rellene la fecha (que la guarda de actualizacion si permite). Es la consecuencia deliberada del flujo documentado en L59 ("cerrar con fecha de fin para abrir la siguiente"). Deuda para el work unit de API: el cierre debe exigir la fecha de fin en la validacion de la peticion.
+
+(c) **Rondas anteriores.** Las seis rondas previas (L55-L60) corrigieron hallazgos CRITICAL de cascada, solapamiento, inmutabilidad y concurrencia, cada uno verificado por la suite completa y fijado por pruebas a nivel de motor.
+
+(d) **Verificacion final.** Suite completa **514 pruebas / 1.427 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos.
+
+(e) **Riesgo:** `Risk: none` (el work unit es aditivo en esquema, sin superficie HTTP ni cambios en datos existentes).
 
 ## Delivery
+
+- **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. El slice acumulado mide **20 rutas y 1.886 lineas** contra `stg` (T9: 5/396, T10: 8/848, T11: 7/642); el `assess` del proveedor sobre ese slice devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion. El push y la apertura de los PRs quedan como decision del usuario.
+
+- **Espejo Engram resuelto.** El topic `odd/ziruma360-core-admin/tasks` quedo guardado en Engram (proyecto `ziruma360`, observacion 852) con el resumen de T9-T11. Para eso hubo que ejecutar `engram init ziruma360` en la raiz del repositorio: el directorio tenia historial bajo dos nombres de proyecto (`360` y `ziruma360`) y Engram rechazaba toda escritura por ambiguedad. `.engram/config.json` es estado local de la herramienta y esta en `.gitignore`, no se versiona.
 
 - T17 se desarrolla en la rama `feat/legacy-retirement`, creada desde `stg` (que ya integra T8 y T12-T16 mas la correccion del nombre de tabla `unidades`). Limite de slice medido al cerrar: **7.054 lineas en 40 rutas y 4 commits** sobre `stg` (`c95aaf3` alcance documental con las specs S38-S41 y la entrada L38, `0945ae1` unidad A: la API legacy re-apuntada al dominio nuevo con `auth` y conjunto activo en el servidor, `5b7c9bf` unidad B: la UI web `/units` y `/people` reescrita sobre `property_units` y `people`, `50ee10d` unidad C: retirada del legacy con la migracion `drop` y la guarda de escritura del documento de identidad), mas el commit documental de cierre (`6c7098e`, que solo anade registro) y la correccion de los dos hallazgos bloqueantes de la verificacion independiente (`0592fcd`, que vuelve atomico el documento de identidad y exige `person.view_document` para escribir cualquiera de sus dos campos). El diff acumulado contra `origin/main` (89 archivos y mas de 18.000 lineas) **no** es un slice entregable ni revisable: la entrega de T17 es **un PR propio con base `stg`**, nunca `main` con el acumulado. La cadena de entrega queda `feat/physical-structure` (T8) -> `feat/leases` (T13) -> `feat/employments` (T14) -> `feat/authorizations` (T15) -> `feat/core-transversal-suite` (T16) -> `feat/legacy-retirement` (T17), cada work unit con su propio PR y su `size:exception` cuando la unidad cohesiva supera el corte de ~400 lineas. T17 anade superficie HTTP (alta y baja de unidades y personas en la API, y las ocho pantallas web migradas al dominio nuevo), elimina las tres tablas legacy y cierra el defecto por el que `/api/v1/units` y `/api/v1/people` exponian datos sin autenticar. El PR queda manual porque en este entorno no hay `gh`, `hub`, `glab` ni token de API: la direccion es `https://github.com/thekrash22/ziruma360/pull/new/feat/legacy-retirement` con base `stg`. Entrega de T17: el usuario autorizo el push y se ejecuto (`origin/feat/legacy-retirement` en `0592fcd`; la rama lleva 5 commits de codigo mas los documentales).
 

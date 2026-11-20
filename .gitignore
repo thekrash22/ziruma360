@@ -27,3 +27,5 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /docs
+# Estado local de Engram
+.engram/
