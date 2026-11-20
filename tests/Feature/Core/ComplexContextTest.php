@@ -4,6 +4,7 @@ namespace Tests\Feature\Core;
 
 use App\Enums\SystemRole;
 use App\Http\Middleware\ResolveActiveComplex;
+use App\Models\Building;
 use App\Models\PropertyUnit;
 use App\Services\ActiveComplexResolver;
 use App\Services\ComplexContext;
@@ -63,6 +64,30 @@ class ComplexContextTest extends CoreTestCase
         $this->assertSame($complex->id, ComplexContext::getCurrentComplexId());
         $this->assertSame($complex->id, session('active_residential_complex_id'));
         $this->assertSame($complex->id, $request->attributes->get('complex_id'));
+    }
+
+    public function test_a_second_user_does_not_inherit_the_complex_of_the_first_request(): void
+    {
+        $complexA = $this->makeComplex('Conjunto Alfa');
+        $complexB = $this->makeComplex('Conjunto Bravo');
+
+        Building::factory()->for($complexA, 'residentialComplex')->create(['name' => 'TORRE ALFA']);
+        Building::factory()->for($complexB, 'residentialComplex')->create(['name' => 'TORRE BRAVO']);
+
+        [$userA] = $this->makeMember($complexA, SystemRole::COMPLEX_ADMIN);
+        [$userB] = $this->makeMember($complexB, SystemRole::COMPLEX_ADMIN);
+
+        // Primera peticion: la API resuelve y publica el conjunto del actor.
+        $this->actingAs($userA)->getJson('/api/v1/core/property-units')->assertOk();
+
+        // Segunda peticion: otra persona, con su propia sesion y su propia cookie.
+        $this->flushSession();
+
+        $response = $this->actingAs($userB)->get('/buildings');
+
+        $response->assertOk();
+        $response->assertSee('TORRE BRAVO');
+        $response->assertDontSee('TORRE ALFA');
     }
 
     /**
