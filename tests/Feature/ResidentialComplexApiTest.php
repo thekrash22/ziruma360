@@ -270,6 +270,20 @@ class ResidentialComplexApiTest extends CoreTestCase
             ->assertJsonValidationErrors('code');
     }
 
+    public function test_update_building_validates_unique_code(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['code' => $other->code])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('code');
+
+        $this->assertNotSame($other->code, $complex->fresh()->code);
+    }
+
     // --------------------------------------------------------------- edicion
 
     public function test_complex_admin_can_update_the_building(): void

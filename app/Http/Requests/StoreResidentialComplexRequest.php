@@ -7,6 +7,7 @@ use App\Models\ResidentialComplex;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 
 class StoreResidentialComplexRequest extends FormRequest
@@ -30,7 +31,7 @@ class StoreResidentialComplexRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:50', 'unique:residential_complexes,code'],
+            'code' => ['required', 'string', 'max:50', Rule::unique('residential_complexes', 'code')],
             'legal_identifier' => ['nullable', 'string', 'max:50'],
             'address' => ['required', 'string', 'max:500'],
             'city' => ['required', 'string', 'max:100'],
