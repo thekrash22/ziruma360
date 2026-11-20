@@ -5,7 +5,7 @@ namespace App\Policies;
 use App\Enums\ComplexPermission;
 use App\Models\ResidentialComplex;
 use App\Models\User;
-use App\Services\PermissionService;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Politicas propias del conjunto (spec §1.4, matriz de permisos).
@@ -14,17 +14,21 @@ use App\Services\PermissionService;
  * servidor: un miembro activo del conjunto o el administrador de plataforma.
  * `create` es un permiso de plataforma: exige `complex.create` en un rol del
  * catalogo de sistema sostenido por una membresia activa.
+ *
+ * El alcance del rol se resuelve aqui y no por delegacion ciega: una
+ * asignacion de rol vencida o pendiente, y un rol que pertenece a otro
+ * conjunto, no conceden ningun permiso sobre este conjunto.
  */
 class ResidentialComplexPolicy
 {
     public function viewSettings(User $user, ResidentialComplex $complex): bool
     {
-        return PermissionService::has($user, ComplexPermission::COMPLEX_VIEW, (int) $complex->id);
+        return $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_VIEW);
     }
 
     public function updateSettings(User $user, ResidentialComplex $complex): bool
     {
-        return PermissionService::has($user, ComplexPermission::COMPLEX_MANAGE_SETTINGS, (int) $complex->id);
+        return $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
     }
 
     /**
@@ -44,7 +48,7 @@ class ResidentialComplexPolicy
     public function viewGovernance(User $user, ResidentialComplex $complex): bool
     {
         return $user->isPlatformAdmin()
-            || PermissionService::has($user, ComplexPermission::COMPLEX_MANAGE_SETTINGS, (int) $complex->id);
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
     }
 
     /**
@@ -53,7 +57,7 @@ class ResidentialComplexPolicy
     public function update(User $user, ResidentialComplex $complex): bool
     {
         return $user->isPlatformAdmin()
-            || PermissionService::has($user, ComplexPermission::COMPLEX_EDIT, (int) $complex->id);
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_EDIT);
     }
 
     /**
@@ -76,6 +80,39 @@ class ResidentialComplexPolicy
                         $permissions->where('permission_key', ComplexPermission::COMPLEX_CREATE->value);
                     });
             })
+            ->exists();
+    }
+
+    /**
+     * Permiso de conjunto resuelto con alcance explicito.
+     *
+     * Solo cuenta la asignacion vigente de un rol del propio conjunto (o del
+     * catalogo de sistema) sobre una membresia activa de ese conjunto: una
+     * asignacion vencida o pendiente, y un rol de otro conjunto, no
+     * conceden nada.
+     */
+    private function scopedPermission(User $user, ResidentialComplex $complex, ComplexPermission $permission): bool
+    {
+        $membership = $user->memberships()
+            ->where('residential_complex_id', $complex->id)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $membership) {
+            return false;
+        }
+
+        return $membership->roles()
+            ->where(fn (Builder $query) => $query
+                ->whereNull('roles.residential_complex_id')
+                ->orWhere('roles.residential_complex_id', $complex->id))
+            ->where(fn (Builder $query) => $query
+                ->whereNull('membership_roles.valid_from')
+                ->orWhere('membership_roles.valid_from', '<=', now()))
+            ->where(fn (Builder $query) => $query
+                ->whereNull('membership_roles.valid_until')
+                ->orWhere('membership_roles.valid_until', '>=', now()))
+            ->whereHas('permissions', fn (Builder $query) => $query->where('permission_key', $permission->value))
             ->exists();
     }
 }

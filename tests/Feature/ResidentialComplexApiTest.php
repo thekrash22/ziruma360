@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ComplexPermission;
 use App\Enums\MembershipStatus;
 use App\Enums\ResidentialComplexStatus;
 use App\Enums\SystemRole;
+use App\Models\ResidentialComplexMembership;
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Core\CoreTestCase;
@@ -304,6 +307,106 @@ class ResidentialComplexApiTest extends CoreTestCase
             ->assertForbidden();
 
         $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_an_expired_role_assignment_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        // La asignacion del rol vencio: ya no concede nada.
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_an_expired_role_assignment_cannot_archive_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertForbidden();
+
+        $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+    }
+
+    public function test_member_with_a_pending_role_assignment_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_from' => now()->addDay()]
+        );
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_a_role_of_another_complex_cannot_update_the_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+
+        $user = User::factory()->create();
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        // Rol del otro conjunto con permiso de edicion: no alcanza al
+        // conjunto de la membresia.
+        $otherRole = Role::factory()->complexLevel($other)->create();
+        $otherRole->grantPermission(ComplexPermission::COMPLEX_EDIT);
+        $membership->roles()->attach($otherRole->id);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->assertForbidden();
+
+        $this->assertSame($complex->city, $complex->fresh()->city);
+    }
+
+    public function test_member_with_a_role_of_another_complex_cannot_read_the_governance_data(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $other = $this->makeComplex('Torres del Sur');
+
+        $user = User::factory()->create();
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        $otherRole = Role::factory()->complexLevel($other)->create();
+        $otherRole->grantPermission(ComplexPermission::COMPLEX_MANAGE_SETTINGS);
+        $membership->roles()->attach($otherRole->id);
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.settings')
+            ->assertJsonMissingPath('data.legal_identifier');
     }
 
     public function test_cannot_change_code_when_not_draft(): void
