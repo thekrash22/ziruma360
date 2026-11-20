@@ -121,6 +121,14 @@
 
 **S57.** Pruebas de dominio de las cuatro tablas nuevas: `CHECK` de vigencia, dominio de `relation_type` y de `area_type`, unicidad de `code` de area comun por conjunto, una relacion no puede ser consigo misma y una asignacion en uso exclusivo no puede apuntar a una unidad de otro conjunto.
 
+**S58.** El conjunto activo resuelto en una peticion no puede quedar disponible en la peticion siguiente. Origen: deuda transversal registrada en L37e, L39 y L44, con el codigo actual de `app/Services/ComplexContext.php`: la clase mantiene `private static ?int $testComplexId`, `setCurrentComplexId()` escribe ahi **ademas** de la sesion (y lo llama el middleware `ResolveActiveComplex` tambien en produccion), y `getCurrentComplexId()` lee ese estatico **con prioridad sobre la sesion**. En un worker persistente (Octane) el contexto de un usuario sobrevive a la peticion de otro usuario y el global scope `BelongsToComplex` filtra por un conjunto ajeno.
+
+**S59.** `ComplexContext` no debe mantener estado global entre peticiones: la unica fuente del conjunto activo es la sesion del usuario. La API publica de la clase (`getCurrentComplexId`, `setCurrentComplexId`, `getCurrentComplex`, `hasActiveComplex`, `resolveFromRequest`, `clear`) se mantiene para no cambiar los ocho call sites de `app/` (middleware, policies, modelos y servicios de auditoria y permisos).
+
+**S60.** El conjunto verificado por `ResolveActiveComplex` debe seguir disponible para el resto de la peticion (controladores, policies y global scope) a traves de la sesion, y el contexto no debe sobrevivir a la peticion: tras el cierre de la peticion, `getCurrentComplexId()` no devuelve ningun conjunto heredado.
+
+**S61.** Decision del usuario (verbatim): "Deuda transversal primero (ComplexContext)" y "Work units chicos, uno por entrega". El alcance de este work unit es la eliminacion del estado global de `ComplexContext`; no incluye el resto de la deuda transversal (desactivacion de conjunto con historial, estados no recuperables por API, grupos de auditoria fuera de catalogo, `notes` en titularidades y rol legacy `responsable`), que queda registrada como deuda para work units posteriores.
+
 ---
 
 ## Tasks
@@ -145,6 +153,7 @@
 | T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit `1c9e0e8` (RED 8 fallos, GREEN 9 pruebas) |
 | T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `d09f1d1` (RED 13 fallos, GREEN 17 pruebas) |
 | T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
+| T19 | S58-S61 | Inline (rama `fix/complex-context-leak`, desde `stg`) | Pendiente |
 
 ---
 
@@ -155,9 +164,10 @@
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
 | T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
 | T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commits 6d66975 + 75f5085) |
-| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | 🔄 Reabierta (specs S50-S52) |
-| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | 🔄 Reabierta (specs S53-S54, solo tablas por D-07) |
-| T11 | `parking_facilities` + `parking_spaces` | T7 | Media | 🔄 Reabierta (specs S55-S57) |
+| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | ✅ Done (commit `1c9e0e8`, PR #19 mergeado a `stg`) |
+| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | ✅ Done (commit `d09f1d1` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
+| T11 | `parking_facilities` + `parking_spaces` | T7 | Media | ✅ Done (commit `a491549` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
+| T19 | Contexto de conjunto activo sin estado global entre peticiones (`ComplexContext`) | T16 | Media | ⏳ En curso (specs S58-S61) |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | ✅ Done (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
@@ -574,6 +584,14 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 (c) **Verificacion de la entrega.** `origin/stg` contiene las 5 migraciones del work unit (relaciones entre unidades, areas comunes, asignaciones de uso exclusivo, instalaciones y espacios de parqueadero) con sus garantias de motor (FKs compuestas, CHECKs, indices unicos, triggers de inmutabilidad y restriccion de exclusion GiST), los modelos y enums correspondientes, las 1.283 lineas de pruebas del work unit y la documentacion.
 
 (d) **Deuda que hereda el work unit siguiente (API de estructura fisica secundaria).** El cierre de una asignacion de uso exclusivo debe exigir `valid_until` en la validacion de la peticion (hoy el motor lo permite y el area queda bloqueada hasta rellenar la fecha); los hallazgos informativos `R1-EXCLUSIVE-CLOSURE-BLOCKS-REUSE` y `R3-TERMINAL-ASSIGNMENT-UNBOUNDED` quedan abiertos como trabajo de la API.
+
+**L63.** Apertura del work unit T19 (decision del usuario, verbatim: *Deuda transversal primero (ComplexContext)* y *Work units chicos, uno por entrega*): specs S58-S61.
+
+(a) **Defecto a corregir.** `app/Services/ComplexContext.php` mantiene `private static ?int $testComplexId`; `setCurrentComplexId()` escribe ahi **ademas** de la sesion (y lo llama el middleware `ResolveActiveComplex` tambien en produccion, no solo en pruebas) y `getCurrentComplexId()` lee ese estatico **con prioridad sobre la sesion**. En un worker persistente (Octane) el conjunto activo de un usuario sobrevive a la peticion de otro usuario y el global scope `BelongsToComplex` filtra por un conjunto ajeno: la fuga es de aislamiento entre conjuntos, no solo de estado.
+
+(b) **Alcance.** Eliminar el estado global manteniendo la API publica de la clase (`getCurrentComplexId`, `setCurrentComplexId`, `getCurrentComplex`, `hasActiveComplex`, `resolveFromRequest`, `clear`) y los ocho call sites de `app/` (dos middleware, el trait `BelongsToComplex`, `AuditLog`, `PermissionService` y `PropertyUnitOwnershipPolicy`). El conjunto verificado por `ResolveActiveComplex` debe seguir disponible para el resto de la peticion a traves de la sesion y no debe sobrevivir a la peticion.
+
+(c) **Fuera de alcance (deuda para work units posteriores).** La divergencia entre `resolveFromRequest` (acepta el encabezado `X-Residential-Complex-Id` si `isMemberOf`, sin exigir membresia activa) y `ActiveComplexResolver::resolve` (exige membresia activa y lanza 403); la desactivacion de conjunto con historial; los estados no recuperables por API; los grupos de auditoria fuera del catalogo cerrado; `notes` en titularidades; el rol legacy `responsable`.
 
 ## Delivery
 
