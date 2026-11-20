@@ -25,6 +25,8 @@ use Illuminate\Support\Facades\DB;
  *     borra: se desactiva y la asignacion se cierra por estado (ended/revoked)
  *   - indice unico parcial por area comun entre las asignaciones activas: solo
  *     hay una asignacion vigente por bien comun, la anterior se cierra antes
+ *   - trigger BEFORE DELETE que impide el borrado duro de una asignacion: el
+ *     historial es inmutable y se cierra por estado, nunca se borra
  */
 return new class extends Migration
 {
@@ -65,6 +67,27 @@ return new class extends Migration
         // siguiente, asi dos unidades nunca tienen el uso exclusivo del mismo
         // bien comun a la vez.
         DB::statement("CREATE UNIQUE INDEX common_property_exclusive_use_assignments_active_area_unique ON common_property_exclusive_use_assignments (residential_complex_id, common_area_id) WHERE status = 'active'");
+
+        // El historial de las asignaciones es inmutable: la asignacion se cierra
+        // por estado (ended/revoked) y nunca se borra. La garantia vive en el
+        // motor, de modo que ningun camino de borrado (Eloquent, SQL directo o
+        // cascada) pueda destruir el registro.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION z360_forbid_exclusive_use_assignment_delete()
+            RETURNS trigger AS $$
+            BEGIN
+                RAISE EXCEPTION
+                    'las asignaciones de uso exclusivo no se borran: cerra la asignacion por estado (ended/revoked)'
+                    USING ERRCODE = 'restrict_violation';
+            END;
+            $$ LANGUAGE plpgsql
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER common_property_exclusive_use_assignments_forbid_delete
+            BEFORE DELETE ON common_property_exclusive_use_assignments
+            FOR EACH ROW EXECUTE FUNCTION z360_forbid_exclusive_use_assignment_delete()
+        SQL);
     }
 
     /**
@@ -73,5 +96,6 @@ return new class extends Migration
     public function down(): void
     {
         DB::statement('DROP TABLE IF EXISTS common_property_exclusive_use_assignments');
+        DB::statement('DROP FUNCTION IF EXISTS z360_forbid_exclusive_use_assignment_delete()');
     }
 };

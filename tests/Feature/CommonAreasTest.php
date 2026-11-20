@@ -451,6 +451,60 @@ class CommonAreasTest extends TestCase
         $this->assertDatabaseCount('common_property_exclusive_use_assignments', 2);
     }
 
+    public function test_an_exclusive_use_assignment_cannot_be_deleted(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-13',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $assignment->delete();
+    }
+
+    public function test_closing_an_assignment_keeps_the_record(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-14',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $assignment->update(['status' => ExclusiveUseAssignmentStatus::ENDED]);
+
+        $this->assertDatabaseHas('common_property_exclusive_use_assignments', [
+            'id' => $assignment->id,
+            'status' => 'ended',
+        ]);
+        $this->assertDatabaseCount('common_property_exclusive_use_assignments', 1);
+    }
+
     public function test_deleting_a_complex_removes_its_common_areas_when_there_are_no_assignments(): void
     {
         CommonArea::create([
