@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\ComplexModule;
 use App\Models\ResidentialComplex;
 use App\Models\ResidentialComplexModule;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -37,7 +38,7 @@ class ModulesTest extends TestCase
     public function test_non_core_modules_are_disabled_by_default(): void
     {
         $this->complex->modules->each(function ($module) {
-            if (!$module->module_key->isCore()) {
+            if (! $module->module_key->isCore()) {
                 $this->assertFalse($module->enabled);
             }
         });
@@ -143,7 +144,7 @@ class ModulesTest extends TestCase
 
     public function test_cannot_have_duplicate_module_keys_per_complex(): void
     {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         $this->complex->modules()
             ->byModule(ComplexModule::SHORT_TERM_RENTAL->value)

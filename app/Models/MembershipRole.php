@@ -52,6 +52,7 @@ class MembershipRole extends Model
     public function isExpired(?Carbon $at = null): bool
     {
         $at ??= now();
+
         return $this->valid_until && $at->gt($this->valid_until);
     }
 
@@ -61,6 +62,7 @@ class MembershipRole extends Model
     public function isPending(?Carbon $at = null): bool
     {
         $at ??= now();
+
         return $this->valid_from && $at->lt($this->valid_from);
     }
 

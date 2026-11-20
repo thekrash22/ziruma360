@@ -80,5 +80,4 @@ return new class extends Migration
         DB::statement('DROP TABLE IF EXISTS property_units');
         DB::statement('DROP INDEX IF EXISTS building_floors_building_id_id_unique');
     }
-
 };

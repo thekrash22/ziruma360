@@ -16,7 +16,7 @@ class EnsureComplexContext
     public function handle(Request $request, Closure $next): Response
     {
         // Skip for unauthenticated users or web routes without complex context
-        if (!$request->user()) {
+        if (! $request->user()) {
             return $next($request);
         }
 

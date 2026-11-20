@@ -12,7 +12,7 @@ use App\Models\ResidentialComplex;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\PropertyUnitOwnership>
+ * @extends Factory<PropertyUnitOwnership>
  */
 class PropertyUnitOwnershipFactory extends Factory
 {

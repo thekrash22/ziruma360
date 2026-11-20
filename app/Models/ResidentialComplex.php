@@ -146,6 +146,7 @@ class ResidentialComplex extends Model
     public function hasModule(ComplexModule|string $module): bool
     {
         $key = $module instanceof ComplexModule ? $module->value : $module;
+
         return $this->modules()
             ->byModule($key)
             ->enabled()
@@ -158,6 +159,7 @@ class ResidentialComplex extends Model
     public function getModule(ComplexModule|string $module): ?ResidentialComplexModule
     {
         $key = $module instanceof ComplexModule ? $module->value : $module;
+
         return $this->modules()
             ->byModule($key)
             ->first();

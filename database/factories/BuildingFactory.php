@@ -4,11 +4,12 @@ namespace Database\Factories;
 
 use App\Enums\BuildingStatus;
 use App\Enums\BuildingType;
+use App\Models\Building;
 use App\Models\ResidentialComplex;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Building>
+ * @extends Factory<Building>
  */
 class BuildingFactory extends Factory
 {
@@ -21,10 +22,10 @@ class BuildingFactory extends Factory
     {
         $type = fake()->randomElement(BuildingType::cases());
         $name = match ($type) {
-            BuildingType::TOWER => 'Torre ' . fake()->numberBetween(1, 10),
-            BuildingType::BLOCK => 'Bloque ' . fake()->randomLetter(),
-            BuildingType::HOUSE_CLUSTER => 'Conjunto ' . fake()->numberBetween(1, 5),
-            default => 'Edificio ' . fake()->numberBetween(1, 20),
+            BuildingType::TOWER => 'Torre '.fake()->numberBetween(1, 10),
+            BuildingType::BLOCK => 'Bloque '.fake()->randomLetter(),
+            BuildingType::HOUSE_CLUSTER => 'Conjunto '.fake()->numberBetween(1, 5),
+            default => 'Edificio '.fake()->numberBetween(1, 20),
         };
 
         return [

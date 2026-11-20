@@ -242,9 +242,9 @@ class UnitLeaseOccupancyConcurrencyTest extends TestCase
     private function occupancyInsertSql(array $rows): string
     {
         return sprintf(
-            "INSERT INTO unit_occupancies (uuid, residential_complex_id, property_unit_id, "
-            ."person_id, occupancy_type, is_primary_contact, lease_id, valid_from, status, "
-            ."created_at, updated_at) "
+            'INSERT INTO unit_occupancies (uuid, residential_complex_id, property_unit_id, '
+            .'person_id, occupancy_type, is_primary_contact, lease_id, valid_from, status, '
+            .'created_at, updated_at) '
             ."VALUES ('%s', %d, %d, %d, 'tenant_resident', false, %d, CURRENT_DATE, 'active', NOW(), NOW())",
             (string) Str::uuid(),
             $rows['residential_complexes'],

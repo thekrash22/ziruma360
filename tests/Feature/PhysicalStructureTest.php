@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\BuildingStatus;
-use App\Enums\BuildingType;
 use App\Enums\FloorType;
 use App\Models\ApartmentType;
 use App\Models\Building;
@@ -52,7 +50,7 @@ class PhysicalStructureTest extends TestCase
     {
         Building::factory()->for($this->complex)->create(['code' => 'A']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         Building::factory()->for($this->complex)->create(['code' => 'A']);
     }
@@ -140,7 +138,7 @@ class PhysicalStructureTest extends TestCase
 
         BuildingFloor::factory()->for($building)->create(['floor_number' => 1]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         BuildingFloor::factory()->for($building)->create(['floor_number' => 1]);
     }
@@ -216,7 +214,7 @@ class PhysicalStructureTest extends TestCase
     {
         ApartmentType::factory()->for($this->complex)->create(['code' => '3H']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         ApartmentType::factory()->for($this->complex)->create(['code' => '3H']);
     }

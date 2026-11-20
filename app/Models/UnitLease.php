@@ -20,7 +20,7 @@ use Illuminate\Support\Str;
  */
 class UnitLease extends Model
 {
-    use HasFactory, BelongsToComplex;
+    use BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

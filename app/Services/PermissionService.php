@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Enums\ComplexPermission;
-use App\Models\ResidentialComplexMembership;
-use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
@@ -43,7 +41,7 @@ class PermissionService
             ->with(['roles.permissions'])
             ->first();
 
-        if (!$membership) {
+        if (! $membership) {
             return false;
         }
 
@@ -70,7 +68,7 @@ class PermissionService
             ->with(['roles.permissions'])
             ->first();
 
-        if (!$membership) {
+        if (! $membership) {
             return collect();
         }
 
@@ -103,7 +101,7 @@ class PermissionService
      */
     public static function authorize(User $user, string|ComplexPermission $permission, ?int $complexId = null): void
     {
-        if (!self::has($user, $permission, $complexId)) {
+        if (! self::has($user, $permission, $complexId)) {
             abort(403, 'No tienes permiso para realizar esta acción.');
         }
     }

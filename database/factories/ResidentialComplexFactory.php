@@ -21,12 +21,12 @@ class ResidentialComplexFactory extends Factory
      */
     public function definition(): array
     {
-        $name = fake()->company() . ' Residencial';
+        $name = fake()->company().' Residencial';
 
         return [
             'uuid' => fake()->uuid(),
             'name' => $name,
-            'code' => Str::slug($name) . '-' . fake()->unique()->randomNumber(4),
+            'code' => Str::slug($name).'-'.fake()->unique()->randomNumber(4),
             'legal_identifier' => fake()->numerify('##########'),
             'address' => fake()->streetAddress(),
             'city' => fake()->city(),

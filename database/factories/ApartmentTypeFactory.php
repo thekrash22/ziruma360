@@ -2,11 +2,12 @@
 
 namespace Database\Factories;
 
+use App\Models\ApartmentType;
 use App\Models\ResidentialComplex;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\ApartmentType>
+ * @extends Factory<ApartmentType>
  */
 class ApartmentTypeFactory extends Factory
 {
