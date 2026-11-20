@@ -33,9 +33,11 @@ use Illuminate\Support\Facades\DB;
  *     creacion, el beneficiario, la vigencia de inicio y la referencia
  *     documental: solo se admite el cierre por estado y la fecha de fin solo
  *     se rellena
- *   - trigger BEFORE INSERT OR UPDATE que rechaza el solapamiento temporal de
+ *   - restriccion de exclusion (GiST) que rechaza el solapamiento temporal de
  *     vigencias: dos asignaciones del mismo bien comun no pueden coexistir en
- *     el tiempo, ni siquiera si la anterior quedo cerrada con fecha futura
+ *     el tiempo, ni siquiera si la anterior quedo cerrada con fecha futura.
+ *     Se valida con el indice, de modo que dos altas concurrentes no pueden
+ *     introducir un solape (un trigger no serializa las inserciones)
  */
 return new class extends Migration
 {
@@ -44,6 +46,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // La extension btree_gist habilita las columnas escalares dentro de un
+        // indice GiST, necesario para la restriccion de exclusion que impide
+        // el solapamiento de vigencias.
+        DB::statement('CREATE EXTENSION IF NOT EXISTS btree_gist');
+
         DB::statement(<<<'SQL'
             CREATE TABLE common_property_exclusive_use_assignments (
                 id bigserial PRIMARY KEY,
@@ -155,34 +162,18 @@ return new class extends Migration
         // Dos asignaciones del mismo bien comun no pueden solaparse en el
         // tiempo. El indice unico parcial solo cubre las asignaciones activas,
         // asi que una asignacion cerrada con fecha de fin futura dejaria pasar
-        // a una segunda asignacion vigente sobre las mismas fechas.
+        // a una segunda asignacion vigente sobre las mismas fechas. La
+        // restriccion de exclusion se valida con el indice: dos altas
+        // concurrentes no pueden introducir un solape, cosa que un trigger no
+        // puede garantizar.
         DB::statement(<<<'SQL'
-            CREATE OR REPLACE FUNCTION z360_guard_exclusive_use_assignment_overlap()
-            RETURNS trigger AS $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM common_property_exclusive_use_assignments a
-                    WHERE a.residential_complex_id = NEW.residential_complex_id
-                      AND a.common_area_id = NEW.common_area_id
-                      AND a.id <> NEW.id
-                      AND daterange(a.valid_from, COALESCE(a.valid_until, 'infinity'::date), '[)')
-                          && daterange(NEW.valid_from, COALESCE(NEW.valid_until, 'infinity'::date), '[)')
-                ) THEN
-                    RAISE EXCEPTION
-                        'dos asignaciones de uso exclusivo del mismo bien comun no pueden solaparse en el tiempo'
-                        USING ERRCODE = 'restrict_violation';
-                END IF;
-
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql
-        SQL);
-
-        DB::statement(<<<'SQL'
-            CREATE TRIGGER common_property_exclusive_use_assignments_guard_overlap
-            BEFORE INSERT OR UPDATE ON common_property_exclusive_use_assignments
-            FOR EACH ROW EXECUTE FUNCTION z360_guard_exclusive_use_assignment_overlap()
+            ALTER TABLE common_property_exclusive_use_assignments
+            ADD CONSTRAINT common_property_exclusive_use_assignments_no_overlap
+            EXCLUDE USING gist (
+                residential_complex_id WITH =,
+                common_area_id WITH =,
+                daterange(valid_from, COALESCE(valid_until, 'infinity'::date), '[)') WITH &&
+            )
         SQL);
     }
 
@@ -194,6 +185,5 @@ return new class extends Migration
         DB::statement('DROP TABLE IF EXISTS common_property_exclusive_use_assignments');
         DB::statement('DROP FUNCTION IF EXISTS z360_forbid_exclusive_use_assignment_delete()');
         DB::statement('DROP FUNCTION IF EXISTS z360_guard_exclusive_use_assignment_update()');
-        DB::statement('DROP FUNCTION IF EXISTS z360_guard_exclusive_use_assignment_overlap()');
     }
 };

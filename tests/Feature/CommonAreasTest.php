@@ -660,6 +660,19 @@ class CommonAreasTest extends TestCase
         DB::statement('TRUNCATE common_property_exclusive_use_assignments');
     }
 
+    public function test_the_non_overlap_of_assignments_is_enforced_by_an_exclusion_constraint(): void
+    {
+        // Un trigger no serializa las inserciones concurrentes: la garantia
+        // tiene que venir del indice, que es lo que hace la restriccion de
+        // exclusion.
+        $constraint = DB::selectOne(
+            "SELECT conname FROM pg_constraint WHERE conrelid = 'common_property_exclusive_use_assignments'::regclass AND contype = 'x'"
+        );
+
+        $this->assertNotNull($constraint);
+        $this->assertSame('common_property_exclusive_use_assignments_no_overlap', $constraint->conname);
+    }
+
     public function test_the_exclusive_use_assignment_identity_cannot_be_rewritten(): void
     {
         $area = CommonArea::create([
