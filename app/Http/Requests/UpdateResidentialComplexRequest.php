@@ -19,6 +19,9 @@ class UpdateResidentialComplexRequest extends FormRequest
      * middleware; la escritura exige `complex.edit` sobre ese conjunto. Los
      * datos de gobierno (`settings` y `legal_identifier`) exigen ademas su
      * propio permiso: editar el conjunto no habilita a reescribirlos.
+     *
+     * El estado del conjunto es un atributo de plataforma (spec S65): un
+     * cambio de estado exige `changeStatus`, que solo concede la plataforma.
      */
     public function authorize(): bool
     {
@@ -28,11 +31,55 @@ class UpdateResidentialComplexRequest extends FormRequest
             return false;
         }
 
+        if ($this->touchesStatus() && ! $this->mayChangeStatus($complex)) {
+            return false;
+        }
+
         if ($this->touchesGovernance()) {
             return Gate::allows('updateGovernance', $complex);
         }
 
         return true;
+    }
+
+    /**
+     * El payload propone un estado.
+     */
+    private function touchesStatus(): bool
+    {
+        return $this->has('status');
+    }
+
+    /**
+     * El estado propuesto es un caso valido del enum y el actor puede
+     * cambiarlo.
+     *
+     * Un valor que no es un caso del enum no es un cambio de estado: lo
+     * responde la validacion de reglas (422), nunca una excepcion.
+     */
+    private function mayChangeStatus(ResidentialComplex $complex): bool
+    {
+        $target = $this->requestedStatus();
+
+        if (! $target instanceof ResidentialComplexStatus) {
+            return true;
+        }
+
+        return Gate::allows('changeStatus', [$complex, $target]);
+    }
+
+    /**
+     * Estado propuesto en el payload, si es un caso valido del enum.
+     */
+    private function requestedStatus(): ?ResidentialComplexStatus
+    {
+        $value = $this->input('status');
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        return ResidentialComplexStatus::tryFrom($value);
     }
 
     /**

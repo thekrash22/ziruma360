@@ -96,7 +96,7 @@ class ResidentialComplexController extends Controller
         $validated['country_code'] = $validated['country_code'] ?? 'CO';
         $validated['timezone'] = $validated['timezone'] ?? 'America/Bogota';
         $validated['currency_code'] = $validated['currency_code'] ?? 'COP';
-        $validated['status'] = $validated['status'] ?? ResidentialComplexStatus::DRAFT;
+        $validated['status'] = ResidentialComplexStatus::DRAFT;
 
         $complex = ResidentialComplex::create($validated);
 
@@ -123,25 +123,82 @@ class ResidentialComplexController extends Controller
 
     /**
      * Update the specified building.
+     *
+     * El estado del conjunto es un atributo de plataforma (spec S65): solo la
+     * plataforma lo cambia, y solo por las transiciones validas de la
+     * tabla de estados (spec S67). Un conjunto no activable responde 422
+     * con la lista de lo que le falta (spec S68, ACE-C03).
      */
     public function update(UpdateResidentialComplexRequest $request): ResidentialComplexResource
     {
         $complex = $this->complex($request);
 
-        abort_unless(
-            $complex->isWritable(),
-            422,
-            'No se puede editar un conjunto suspendido o archivado.'
-        );
+        $validated = $request->validated();
+
+        $target = $this->targetStatus($validated);
+
+        // Un conjunto suspendido o archivado no es escribible: lo unico que
+        // admite es su propio estado (la reactivacion por la plataforma).
+        if (! $complex->isWritable() && $this->touchesOtherAttributes($validated)) {
+            abort(422, 'No se puede editar un conjunto suspendido o archivado.');
+        }
+
+        if ($target !== null && $target !== $complex->status) {
+            abort_unless(
+                $complex->status->canTransitionTo($target),
+                422,
+                sprintf('No se puede pasar de «%s» a «%s».', $complex->status->value, $target->value)
+            );
+
+            if ($target === ResidentialComplexStatus::ACTIVE) {
+                $blockers = $complex->activationBlockers();
+
+                abort_if(
+                    $blockers !== [],
+                    422,
+                    'No se puede activar el conjunto. '.implode(' ', $blockers)
+                );
+            }
+        }
 
         // Check if code can be changed
         if ($request->has('code') && ! $complex->canChangeCode()) {
             abort(422, 'No se puede cambiar el código de un conjunto que no está en estado borrador.');
         }
 
-        $complex->update($request->validated());
+        $complex->update($validated);
 
         return new ResidentialComplexResource($complex->fresh());
+    }
+
+    /**
+     * Estado destino de la peticion, si el payload propone uno.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function targetStatus(array $validated): ?ResidentialComplexStatus
+    {
+        if (! array_key_exists('status', $validated)) {
+            return null;
+        }
+
+        $value = $validated['status'];
+
+        if ($value instanceof ResidentialComplexStatus) {
+            return $value;
+        }
+
+        return is_string($value) ? ResidentialComplexStatus::tryFrom($value) : null;
+    }
+
+    /**
+     * El payload escribe atributos que no son el estado.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function touchesOtherAttributes(array $validated): bool
+    {
+        return array_diff(array_keys($validated), ['status']) !== [];
     }
 
     /**

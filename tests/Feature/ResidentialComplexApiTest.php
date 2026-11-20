@@ -10,6 +10,7 @@ use App\Models\ResidentialComplex;
 use App\Models\ResidentialComplexMembership;
 use App\Models\Role;
 use App\Models\User;
+use App\Settings\ComplexSettingsCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Core\CoreTestCase;
 
@@ -720,6 +721,261 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
     }
 
+    // ------------------------------------------- estados y privilegios (T20)
+
+    public function test_complex_admin_cannot_change_the_status_of_the_complex(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->assertForbidden();
+
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
+    public function test_complex_admin_can_still_update_the_other_attributes(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['name' => 'Torres Renombradas'])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Torres Renombradas');
+
+        $this->assertSame('Torres Renombradas', $complex->fresh()->name);
+    }
+
+    public function test_platform_admin_can_suspend_the_complex(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->assertOk()
+            ->assertJsonPath('data.status', ResidentialComplexStatus::SUSPENDED->value);
+
+        $this->assertSame(ResidentialComplexStatus::SUSPENDED, $complex->fresh()->status);
+    }
+
+    public function test_platform_admin_can_reactivate_a_suspended_complex(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::SUSPENDED]);
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->prepareActivatableComplex($complex);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertOk()
+            ->assertJsonPath('data.status', ResidentialComplexStatus::ACTIVE->value);
+
+        $this->assertSame(ResidentialComplexStatus::ACTIVE, $complex->fresh()->status);
+    }
+
+    public function test_an_archived_complex_cannot_be_reactivated(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        [$platform] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk();
+
+        $this->assertSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+
+        // Aun con todas las precondiciones cumplidas, `archived` es terminal.
+        $this->prepareActivatableComplex($complex);
+
+        $response = $this->actingAs($platform)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('archived', (string) $response->json('message'));
+        $this->assertStringContainsString('active', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+    }
+
+    public function test_the_status_cannot_go_back_to_draft(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::DRAFT->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('active', (string) $response->json('message'));
+        $this->assertStringContainsString('draft', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::ACTIVE, $complex->fresh()->status);
+    }
+
+    public function test_an_invalid_status_value_is_rejected(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => 'banana'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
+    public function test_activating_requires_an_administrator(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        // Estructura y politicas listas: lo que falta es el administrador.
+        $this->makeUnit($complex);
+        $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('administrador', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
+    public function test_activating_requires_a_physical_structure(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        // Administrador y politicas listos: lo que falta es la estructura.
+        $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('estructura', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
+    public function test_activating_requires_the_minimum_policies(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        // Administrador y estructura listos: lo que faltan son las politicas.
+        $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $this->makeUnit($complex);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('políticas', (string) $response->json('message'));
+        $this->assertStringContainsString('regional', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
+    public function test_activating_requires_a_current_administrator_assignment(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        // La asignacion del rol del administrador vencio: ya no administra.
+        [, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $membership->roles()->updateExistingPivot(
+            Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail()->id,
+            ['valid_until' => now()->subDay()]
+        );
+
+        $this->makeUnit($complex);
+        $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('administrador', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
+    public function test_a_suspended_complex_cannot_be_edited(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        $complex->update(['status' => ResidentialComplexStatus::SUSPENDED]);
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['name' => 'Torres Renombradas'])
+            ->assertStatus(422);
+
+        $this->assertSame(
+            'No se puede editar un conjunto suspendido o archivado.',
+            $response->json('message')
+        );
+        $this->assertSame('Torres del Norte', $complex->fresh()->name);
+    }
+
+    public function test_the_complex_admin_can_still_archive_the_complex(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->assertOk()
+            ->assertJsonPath('data.status', ResidentialComplexStatus::ARCHIVED->value);
+
+        $this->assertSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
+    }
+
+    public function test_a_complex_is_always_created_in_draft(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $before = ResidentialComplex::count();
+
+        // El alta no acepta un estado: el conjunto nace en borrador y se
+        // activa despues de configurarlo (spec §2, paso 1).
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload([
+                'status' => ResidentialComplexStatus::ACTIVE->value,
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame($before, ResidentialComplex::count());
+    }
+
+    public function test_activating_requires_a_non_empty_policy_group(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+
+        $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $this->makeUnit($complex);
+
+        // Un grupo presente pero vacio no define ninguna politica.
+        $settings = ComplexSettingsCatalog::defaults();
+        $settings['regional'] = [];
+
+        $complex->update(['settings' => $settings]);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('regional', (string) $response->json('message'));
+        $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
+    }
+
     /**
      * Miembro activo con un rol propio que lleva solo los permisos indicados.
      *
@@ -753,5 +1009,16 @@ class ResidentialComplexApiTest extends CoreTestCase
             'address' => 'Calle 1 # 2-3',
             'city' => 'Bogota',
         ], $overrides);
+    }
+
+    /**
+     * Deja el conjunto con las tres precondiciones de activacion (ACE-C03):
+     * administrador vigente, estructura fisica y politicas minimas.
+     */
+    private function prepareActivatableComplex(ResidentialComplex $complex): void
+    {
+        $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $this->makeUnit($complex);
+        $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
     }
 }
