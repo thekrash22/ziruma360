@@ -105,6 +105,22 @@
 
 **S49.** Los parámetros de consulta del listado se validan contra una lista permitida: `order_by` solo acepta columnas ordenables conocidas y `per_page` un entero entre 1 y 100; un valor no permitido responde 422 en lugar de provocar un 500.
 
+**S50.** `property_unit_relations` (§3.7 del spec): tabla que registra la vinculacion entre unidades con `source_property_unit_id`, `target_property_unit_id`, `relation_type` (`annex`, `use_assignment`, `adjacent`, …), `valid_from`, `valid_until`, `status`, `notes`. "Permite historial". Un parqueadero privado es un `property_unit` con `unit_type = private_parking` y un deposito es un `property_unit` con `unit_type = storage`: la vinculacion con el apartamento se registra en esta tabla, no en la titularidad.
+
+**S51.** Garantias a nivel de base de datos de `property_unit_relations`: las dos unidades pertenecen al mismo conjunto (FK compuesta, ACE-C02/ACE-P07), la relacion no puede ser consigo misma, y `valid_until >= valid_from` cuando ambos existen.
+
+**S52.** RN-S05 y ACE-S02: "Relacionar un parqueadero con un apartamento no implica misma titularidad ni otorga permisos. Uso ≠ titularidad ≠ autorización" y "Un parqueadero privado puede existir sin estar asociado a ningún apartamento". La relacion no participa del calculo de alcance del propietario, no crea titularidades y no concede permisos.
+
+**S53.** `common_areas` (§3.8 del spec): `building_id` (nullable), `name`, `code`, `area_type` (`pool`, `social_hall`, `bbq`, `gym`, `playground`, `court`, `terrace`, `parking`, `other`), `description`, `location`, `capacity`, `area_m2`, `is_reservable`, `status`, `features`. "Son distintas de las unidades privadas y de los sistemas de asignación de parqueaderos" y "Las reglas de reserva se dejan preparadas (`is_reservable`) pero el módulo de reservas es futuro".
+
+**S54.** `common_property_exclusive_use_assignments` (§3.9 del spec): `common_area_id` (o bien comun), `property_unit_id` beneficiaria, vigencia, documento de soporte, estado. RN-S06: "Un bien común asignado en uso exclusivo no se registra como propiedad privada. La asignación se separa de la titularidad legal." Segun la [Propuesta] del spec, en esta unidad se crean las tablas sin UI ("Tablas creadas desde el inicio, pero con UI mínima hasta validar el diseño jurídico", decision D-07).
+
+**S55.** `parking_facilities` y `parking_spaces` (§3.10 del spec): en el core se registra la instalacion (nombre, tipo, capacidad total, capacidad operativa, modo de asignacion, estado) y, si aplica, sus espacios numerados; "la logica de reservas, disponibilidad por intervalo y concurrencia pertenece al modulo de rentas cortas".
+
+**S56.** Pruebas de aislamiento multi-tenant de las cuatro tablas nuevas: las FKs compuestas rechazan cruces entre conjuntos a nivel de base de datos (ACE-C02, ACE-P07).
+
+**S57.** Pruebas de dominio de las cuatro tablas nuevas: `CHECK` de vigencia, dominio de `relation_type` y de `area_type`, unicidad de `code` de area comun por conjunto, una relacion no puede ser consigo misma y una asignacion en uso exclusivo no puede apuntar a una unidad de otro conjunto.
+
 ---
 
 ## Tasks
@@ -126,6 +142,9 @@
 | T16 | S31-S37 | Inline (rama `feat/core-transversal-suite`) | Commits `41d80f4` + `12d392d` + `4c1292e` + `31d8c82` + `2322632` + `f8b62bb` + `30590b4` + `61b1820` + `c3871ba` + `c6c8d22` + `957c5bd` |
 | T17 | S38-S41 | Workers (rama `feat/legacy-retirement`, desde `stg`) | Commits `c95aaf3` + `0945ae1` + `5b7c9bf` + `50ee10d` + `6c7098e` + `98b9999` + `0592fcd` + `26ed9ba` + `1e7b730` + `61710f0` |
 | T18 | S42-S49 | Inline (rama `feat/api-buildings-guard`, desde `stg`) | Commits `8b2b850` + `6607256` + `aeb5cc4` + `3ff75d6` + `8241b8a` |
+| T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
+| T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
+| T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
 
 ---
 
@@ -136,9 +155,9 @@
 | T6 | Tabla `residential_complex_modules` (módulos habilitados por conjunto) | T1 | ✅ Done |
 | T7 | Estructura física: `buildings`, `building_floors`, `apartment_types` | T6 | ✅ Done |
 | T8 | `property_units` (genérica) + `apartments` (especialización) | T7 | ✅ Done (commits 6d66975 + 75f5085) |
-| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media |
-| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media |
-| T11 | `parking_facilities` + `parking_spaces` | T7 | Media |
+| T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | 🔄 Reabierta (specs S50-S52) |
+| T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | 🔄 Reabierta (specs S53-S54, solo tablas por D-07) |
+| T11 | `parking_facilities` + `parking_spaces` | T7 | Media | 🔄 Reabierta (specs S55-S57) |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | ✅ Done (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
@@ -404,7 +423,21 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (e) **Cierre**: plan de correccion de 17 lineas de diff (store revision `sha256:340adc17...`), validador dirigido (`minimax/MiniMax-M2.7`, 16,5 s, 4.167 tokens) **APROBO** la correccion; target final `sha256:a0b7e904...`; `acknowledge-approved` quemo la autoridad con evidencia `gentle-ai.review-acknowledged/v1` (revision consumida `sha256:be4d25f6...`); la entrega sigue la politica ordinaria del repositorio.
 
-**L50.** Integracion de T17 y T18 en la misma rama (tras el merge del PR #15, `15da9e8`). Hechos: (a) `stg` absorbio `feat/legacy-retirement` y la rama `feat/api-buildings-guard` absorbio `stg` con un merge explicito (`95337fe`), porque **las dos ramas no conviven**: ambas editaban la misma region de `routes/api.php` (los imports y los primeros grupos de ruta) y el mismo bloque del feature doc. (b) Resolucion de `routes/api.php`: se conserva el grupo protegido de `/api/v1/buildings` (T18: sesion, cookies, CSRF y `auth`) y se descarta el `apiResource('buildings')` sin proteccion del base, y en el lado de T17 se conserva el grupo "API Legacy re-apuntada al dominio nuevo" (`PropertyUnitController` y `Core\PersonController` con `ResolveActiveComplex`) y se descarta el grupo legacy que apuntaba a `UnidadController` y `PersonaController` (modelos ya eliminados en T17). Los imports de ambos lados se fusionaron sin conflicto. (c) Resolucion del documento: el Log se renumero **una sola vez** (T17 conserva L38-L42 y T18 pasa a L43-L49), con una sola seccion `Delivery` que acumula ambas entregas; el espejo `odd/ziruma360-core-admin/tasks.md` se renumero en consecuencia. (d) Verificacion de la coexistencia (primera vez que T17 y T18 conviven en el mismo arbol): suite completa **453 pruebas / 1.331 assertions** en verde contra PostgreSQL real; Pint limpio (corrijo `fully_qualified_strict_types` en los FQCN del grupo de T17); `route:list` confirma que `/api/v1/buildings` resuelve a `ResidentialComplexController` y que `/api/v1/units` y `/api/v1/people` resuelven a los controladores del dominio nuevo conservando los parametros `unidad` y `persona`. (e) El slice de T18 contra el `stg` nuevo queda en **13 rutas y 1.370 lineas** de diff.
+**L50.** Integracion de T17 y T18 en la misma rama (tras el merge del PR #15, `15da9e8`). Hechos: (a) `stg` absorbio `feat/legacy-retirement` y la rama `feat/api-buildings-guard` absorbio `stg` con un merge explicito (`95337fe`), porque **las dos ramas no conviven**: ambas editaban la misma region de `routes/api.php` (los imports y los primeros grupos de ruta) y el mismo bloque del feature doc. (b) Resolucion de `routes/api.php`: se conserva el grupo protegido de `/api/v1/buildings` (T18: sesion, cookies, CSRF y `auth`) y se descarta el `apiResource('buildings')` sin proteccion del base, y en el lado de T17 se conserva el grupo "API Legacy re-apuntada al dominio nuevo" (`PropertyUnitController` y `Core\PersonController` con `ResolveActiveComplex`) y se descarta el grupo legacy que apuntaba a `UnidadController` y `PersonaController` (modelos ya eliminados en T17). Los imports de ambos lados se fusionaron sin conflicto. (c) Resolucion del documento: el Log se renumero **una sola vez** (T17 conserva L38-L42 y T18 pasa a L43-L49), con una sola seccion `Delivery` que acumula ambas entregas; el espejo `odd/ziruma360-core-admin/tasks.md` se renumero en consecuencia. (d) Verificacion de la coexistencia (primera vez que T17 y T18 conviven en el mismo arbol): suite completa **453 pruebas / 1.331 assertions** en verde contra PostgreSQL real; Pint limpio (corrijo `fully_qualified_strict_types` en los FQCN del grupo de T17); `route:list` confirma que `/api/v1/buildings` resuelve a `ResidentialComplexController` y que `/api/v1/units` y `/api/v1/people` resuelven a los controladores del dominio nuevo conservando los parametros `unidad` y `persona`. (e) El slice de T18 contra el `stg` nuevo queda en **13 rutas y 1.370 lineas** de diff.**L51.** Apertura del work unit de **estructura fisica secundaria (T9, T10 y T11)**: la frontera que el usuario eligio para cerrar el core.
+
+(a) **Solicitud del usuario (verbatim):** "revisemos que nos falta para terminar el core." La revision del estado (feature doc, spec base §3.7-§3.10 y §5, arbol real y entrega en git) concluyo que el nucleo de datos del core esta cerrado (T1-T18, 453 pruebas en verde) pero que faltan las tres tablas del spec §3 (T9-T11), la superficie HTTP de las relaciones, el wizard de onboarding (spec §2) y la carga masiva (ACE-S07, D-09).
+
+(b) **Decision del usuario (verbatim):** "T9-T11: estructura física secundaria", entre las cuatro fronteras ofrecidas (estructura fisica secundaria, superficie de relaciones, onboarding y membresias, deuda tecnica).
+
+(c) **Alcance de esta unidad:** solo dominio: migraciones, modelos, garantias a nivel de base de datos y pruebas de aislamiento y de dominio. La API y la UI de estas entidades, la carga masiva y el onboarding quedan para work units posteriores. T10 se limita a las tablas, sin UI, por la [Propuesta] del spec §3.9 y la decision D-07 (diseno juridico sin definir).
+
+(d) **Specs anadidas:** S50-S52 (`property_unit_relations`, sus garantias, RN-S05 y ACE-S02), S53 (`common_areas`), S54 (`common_property_exclusive_use_assignments` y RN-S06), S55 (`parking_facilities` y `parking_spaces`) y S56-S57 (aislamiento multi-tenant y dominio de las cuatro tablas).
+
+(e) **Rama y entrega:** rama `feat/physical-secondary` creada desde `stg` (`1fcec86`), con tres work units (T9, T10, T11) en commits separados y PRs apilados contra `stg` (uno por work unit), siguiendo la cadena de entrega previa. Los tres work units se ejecutan en serie, no en paralelo: comparten la base de pruebas PostgreSQL `z360_test` en el contenedor `ziruma360-app`.
+
+(f) **TDD:** habilitado (fuente: historial del propio documento, que registra RED y GREEN observados en cada unidad anterior); runner: `docker compose exec -T app php artisan test` (PHPUnit/Pest) contra PostgreSQL real `z360_test` (contenedor `ziruma360-app`: PHP 8.5.11, Laravel 13.37.0). No hay PHP en el host.
+
+(g) **Estado al abrir:** sin RED observado todavia; T9 arranca con sus pruebas.
 
 ## Delivery
 
