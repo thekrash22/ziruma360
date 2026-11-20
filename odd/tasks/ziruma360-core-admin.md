@@ -553,6 +553,18 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (c) **Riesgo:** `Risk: item 5` (la migracion requiere la extension `btree_gist`, disponible en el build de PostgreSQL del proyecto y creada de forma idempotente; queda anotada como requisito de despliegue en el doc del work unit).
 
+**L61.** Ronda final nativa: el slice T10+T11 queda **APROBADO** y la autoridad queda **quemada**.
+
+(a) **Ronda final.** Autoridad `review-a8e70d38589df9c4` (18 rutas, 2.302 lineas, tier medio, lentes `review-risk` y `review-reliability`, reviewer `minimax/MiniMax-M2.7`): sin hallazgos bloqueantes. Quemado con `gentle-ai.review-acknowledged/v1` (revision consumida `sha256:02aec8bb...`, target `sha256:1fde1fbc...`). La entrega sigue la politica ordinaria del repositorio: el push y la apertura del PR son decisiones del usuario.
+
+(b) **Hallazgos informativos (deuda, no bloquean).** `R1-EXCLUSIVE-CLOSURE-BLOCKS-REUSE` y `R3-TERMINAL-ASSIGNMENT-UNBOUNDED`: cerrar una asignacion sin informar `valid_until` la deja con rango infinito, de modo que el bien comun queda bloqueado para una asignacion posterior hasta que se rellene la fecha (que la guarda de actualizacion si permite). Es la consecuencia deliberada del flujo documentado en L59 ("cerrar con fecha de fin para abrir la siguiente"). Deuda para el work unit de API: el cierre debe exigir la fecha de fin en la validacion de la peticion.
+
+(c) **Rondas anteriores.** Las seis rondas previas (L55-L60) corrigieron hallazgos CRITICAL de cascada, solapamiento, inmutabilidad y concurrencia, cada uno verificado por la suite completa y fijado por pruebas a nivel de motor.
+
+(d) **Verificacion final.** Suite completa **514 pruebas / 1.427 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos.
+
+(e) **Riesgo:** `Risk: none` (el work unit es aditivo en esquema, sin superficie HTTP ni cambios en datos existentes).
+
 ## Delivery
 
 - **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. El slice acumulado mide **20 rutas y 1.886 lineas** contra `stg` (T9: 5/396, T10: 8/848, T11: 7/642); el `assess` del proveedor sobre ese slice devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion. El push y la apertura de los PRs quedan como decision del usuario.
