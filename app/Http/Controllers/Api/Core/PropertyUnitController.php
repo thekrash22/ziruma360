@@ -75,7 +75,7 @@ class PropertyUnitController extends CoreController
      */
     public function store(StorePropertyUnitRequest $request): JsonResponse
     {
-        $unit = new PropertyUnit();
+        $unit = new PropertyUnit;
         $unit->fill($request->validated());
         $unit->residential_complex_id = $this->complexId($request);
         $unit->save();
