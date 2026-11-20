@@ -174,7 +174,7 @@
 | T9 | `property_unit_relations` (anexos, parqueaderos) | T8 | Media | ✅ Done (commit `1c9e0e8`, PR #19 mergeado a `stg`) |
 | T10 | `common_areas` + `common_property_exclusive_use_assignments` | T7 | Media | ✅ Done (commit `d09f1d1` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
 | T11 | `parking_facilities` + `parking_spaces` | T7 | Media | ✅ Done (commit `a491549` + correcciones de la revision nativa, PR #19 mergeado a `stg`) |
-| T19 | Contexto de conjunto activo sin estado global entre peticiones (`ComplexContext`) + aislamiento sin contexto (S62-S64) | T16 | Media | ⏳ En curso: H1 incorporado por decision del usuario (L66) |
+| T19 | Contexto de conjunto activo sin estado global entre peticiones (`ComplexContext`) + aislamiento sin contexto (S62-S64) | T16 | Media | ✅ Done (commits `a24fb49` + `a7f5f26` + `60163fe`) |
 | T12 | `property_unit_ownerships` (titularidad con historial) | T8 | ✅ Done (specs S14-S16: incluye `people`) |
 | T13 | `unit_leases` (arrendamientos) + `unit_occupancies` (ocupantes) | T12 | Alta | ✅ Done (specs S17-S19, rama `feat/leases`) |
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
@@ -623,6 +623,18 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 (b) **Por que no se corrige en T19.** Cambiarlo altera el comportamiento observable de rutas que este work unit no nombra y tiene impacto en consola, seeders y jobs, que hoy consultan sin filtro. La regla correcta (sin contexto no se devuelve nada) es una decision de producto con su propia revision: queda como work unit propio.
 
 (c) **Autoridad.** El lineage queda `escalated` y el provider lo declara terminal: liberar la autoridad o desactivar el switch de revision del clon es decision del mantenedor. T19 conserva su verificacion propia (suite 518/1.438 y verificador independiente PASS en S58-S61) y la entrega sigue la politica ordinaria del repositorio.
+
+**L66.** Correccion de H1 dentro de T19 (decision del usuario, verbatim: *Corregir H1 ahora dentro de T19* y *H1: aislamiento sin contexto*): specs S62-S64.
+
+(a) **Spec.** S62: sin conjunto resuelto, la aplicacion no expone datos de ningun conjunto; el ambito global de `BelongsToComplex` aplica `whereIn('residential_complex_id', [])` cuando no hay conjunto activo. S63: la consola no cambia (`runningInConsole && ! runningUnitTests` sigue sin filtrar) para jobs, seeders y comandos artisan. S64: pruebas de la regla.
+
+(b) **TDD.** RED: el test nuevo `global scope exposes nothing without a resolved complex` falla con `Failed asserting that 2 is identical to 0` (sin contexto se veian las unidades de los dos complejos) y la suite completa queda con **33 tests fallidos en 11 archivos**, casi todos por relaciones que se resuelven con una consulta filtrada (`Attempt to read property "id" on null`). GREEN: **519 pruebas / 1.439 assertions** y Pint limpio sobre 219 archivos.
+
+(c) **Adaptacion de los tests (delegada a `gentle-ai-worker`, con superficies acotadas a los 11 archivos).** Los 33 tests quedaron en verde fijando el contexto del conjunto (`ComplexContext::setCurrentComplexId`) en el `setUp` de cada archivo, que es la semantica real de la aplicacion; ninguno requirio `withoutComplexScope()` porque los tests que leen de mas de un conjunto a proposito ya usan `forComplex()` o `assertDatabaseHas`. Verificado con `git diff -U0`: lo unico eliminado son cuatro comentarios obsoletos que decian que el contexto era estatico, y ninguna asercion se elimino, relajo ni modifico.
+
+(d) **Revision nativa.** La ronda anterior (`review-23737772ba0b33bd`) quedo escalada y detenida (L65) por `R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY`; ese lineage queda terminal y su liberacion es decision del mantenedor. Para el codigo corregido, el `assess` devuelve riesgo medio con `reviewDue: false` (`under_budget`): el proveedor no exige otra ronda y el plan deja la verificacion en el verificador independiente.
+
+(e) **Commits.** `60163fe` (fix del ambito global y adaptacion de los 11 archivos de test) sobre `d63ff56`.
 
 ## Delivery
 
