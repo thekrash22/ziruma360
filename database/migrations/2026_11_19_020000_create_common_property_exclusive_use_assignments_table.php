@@ -30,8 +30,12 @@ use Illuminate\Support\Facades\DB;
  *   - trigger BEFORE TRUNCATE que impide truncar la tabla: un TRUNCATE no
  *     dispara los triggers de fila
  *   - trigger BEFORE UPDATE que deja inmutables el identificador, la fecha de
- *     creacion, el beneficiario, la vigencia y la referencia documental: solo
- *     se admite el cierre por estado
+ *     creacion, el beneficiario, la vigencia de inicio y la referencia
+ *     documental: solo se admite el cierre por estado y la fecha de fin solo
+ *     se rellena
+ *   - trigger BEFORE INSERT OR UPDATE que rechaza el solapamiento temporal de
+ *     vigencias: dos asignaciones del mismo bien comun no pueden coexistir en
+ *     el tiempo, ni siquiera si la anterior quedo cerrada con fecha futura
  */
 return new class extends Migration
 {
@@ -127,16 +131,14 @@ return new class extends Migration
                             'la asignacion solo se cierra por estado (active -> ended/revoked)'
                             USING ERRCODE = 'restrict_violation';
                     END IF;
+                END IF;
 
-                    IF NEW.valid_until IS DISTINCT FROM OLD.valid_until AND NEW.valid_until IS NULL THEN
+                IF NEW.valid_until IS DISTINCT FROM OLD.valid_until THEN
+                    IF OLD.valid_until IS NOT NULL OR NEW.valid_until IS NULL THEN
                         RAISE EXCEPTION
-                            'al cerrar la asignacion la vigencia solo puede rellenarse, nunca borrarse'
+                            'la vigencia de la asignacion solo se rellena: no se reescribe ni se borra'
                             USING ERRCODE = 'restrict_violation';
                     END IF;
-                ELSIF NEW.valid_until IS DISTINCT FROM OLD.valid_until THEN
-                    RAISE EXCEPTION
-                        'la vigencia de la asignacion solo cambia al cerrarla por estado'
-                        USING ERRCODE = 'restrict_violation';
                 END IF;
 
                 RETURN NEW;
@@ -149,6 +151,39 @@ return new class extends Migration
             BEFORE UPDATE ON common_property_exclusive_use_assignments
             FOR EACH ROW EXECUTE FUNCTION z360_guard_exclusive_use_assignment_update()
         SQL);
+
+        // Dos asignaciones del mismo bien comun no pueden solaparse en el
+        // tiempo. El indice unico parcial solo cubre las asignaciones activas,
+        // asi que una asignacion cerrada con fecha de fin futura dejaria pasar
+        // a una segunda asignacion vigente sobre las mismas fechas.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION z360_guard_exclusive_use_assignment_overlap()
+            RETURNS trigger AS $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM common_property_exclusive_use_assignments a
+                    WHERE a.residential_complex_id = NEW.residential_complex_id
+                      AND a.common_area_id = NEW.common_area_id
+                      AND a.id <> NEW.id
+                      AND daterange(a.valid_from, COALESCE(a.valid_until, 'infinity'::date), '[)')
+                          && daterange(NEW.valid_from, COALESCE(NEW.valid_until, 'infinity'::date), '[)')
+                ) THEN
+                    RAISE EXCEPTION
+                        'dos asignaciones de uso exclusivo del mismo bien comun no pueden solaparse en el tiempo'
+                        USING ERRCODE = 'restrict_violation';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER common_property_exclusive_use_assignments_guard_overlap
+            BEFORE INSERT OR UPDATE ON common_property_exclusive_use_assignments
+            FOR EACH ROW EXECUTE FUNCTION z360_guard_exclusive_use_assignment_overlap()
+        SQL);
     }
 
     /**
@@ -159,5 +194,6 @@ return new class extends Migration
         DB::statement('DROP TABLE IF EXISTS common_property_exclusive_use_assignments');
         DB::statement('DROP FUNCTION IF EXISTS z360_forbid_exclusive_use_assignment_delete()');
         DB::statement('DROP FUNCTION IF EXISTS z360_guard_exclusive_use_assignment_update()');
+        DB::statement('DROP FUNCTION IF EXISTS z360_guard_exclusive_use_assignment_overlap()');
     }
 };

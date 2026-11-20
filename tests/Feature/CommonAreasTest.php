@@ -436,7 +436,10 @@ class CommonAreasTest extends TestCase
             'status' => ExclusiveUseAssignmentStatus::ACTIVE,
         ]);
 
-        $assignment->update(['status' => ExclusiveUseAssignmentStatus::ENDED]);
+        $assignment->update([
+            'status' => ExclusiveUseAssignmentStatus::ENDED,
+            'valid_until' => '2026-01-31',
+        ]);
 
         $second = CommonPropertyExclusiveUseAssignment::create([
             'residential_complex_id' => $this->complex->id,
@@ -449,6 +452,97 @@ class CommonAreasTest extends TestCase
         $this->assertSame(ExclusiveUseAssignmentStatus::ENDED, $assignment->fresh()->status);
         $this->assertSame(ExclusiveUseAssignmentStatus::ACTIVE, $second->fresh()->status);
         $this->assertDatabaseCount('common_property_exclusive_use_assignments', 2);
+    }
+
+    public function test_two_assignments_of_the_same_common_area_cannot_overlap_in_time(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-18',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+        $otherUnit = $this->unit($this->complex, 'A-102');
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'valid_until' => '2026-12-31',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $assignment->update(['status' => ExclusiveUseAssignmentStatus::ENDED]);
+
+        $this->expectException(QueryException::class);
+
+        CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $otherUnit->id,
+            'valid_from' => '2026-06-01',
+            'valid_until' => '2026-08-31',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+    }
+
+    public function test_an_assignment_validity_end_cannot_be_rewritten(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-19',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'valid_until' => '2026-12-31',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $assignment->update(['valid_until' => '2027-06-30']);
+    }
+
+    public function test_an_assignment_validity_end_can_be_filled_when_it_is_closed(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-20',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $assignment->update([
+            'status' => ExclusiveUseAssignmentStatus::ENDED,
+            'valid_until' => '2026-06-30',
+        ]);
+
+        $this->assertSame(ExclusiveUseAssignmentStatus::ENDED, $assignment->fresh()->status);
+        $this->assertSame('2026-06-30', $assignment->fresh()->valid_until->toDateString());
     }
 
     public function test_an_exclusive_use_assignment_cannot_be_deleted(): void
