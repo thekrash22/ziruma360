@@ -135,6 +135,14 @@
 
 **S64.** Pruebas de la regla: sin conjunto resuelto, una consulta a un modelo con el ambito global no devuelve filas; con conjunto resuelto, devuelve solo las de ese conjunto; en consola no se filtra. La prueba end-to-end de dos personas (L64, commit `a7f5f26`) se mantiene: la segunda persona no ve ni el conjunto de la primera ni los de otras.
 
+**S65.** El estado del conjunto (`residential_complexes.status`) es un atributo de plataforma: por API, solo el administrador de plataforma lo cambia. El administrador de conjunto conserva `complex.edit` sobre el resto de los atributos, pero ese permiso **no** habilita suspender, activar ni reponer el conjunto. Contexto: matriz de permisos de §1.3, fila "Crear / suspender conjunto": Plataforma ✓, Admin conjunto —.
+
+**S66.** La baja conserva su puerta propia y es la **unica**: `DELETE /api/v1/buildings/{uuid}` pasa el conjunto a `archived` con `complex.edit` (decision de producto de L43) y nunca borra. `archived` es un estado terminal: un conjunto archivado no se reactiva ni se escribe por ninguna via, y el `PATCH` no puede archivar (la tabla de transiciones de S67 no incluye `-> archived`), de modo que la baja de negocio tiene una sola puerta.
+
+**S67.** Transiciones de estado validas: `draft -> active`, `active -> suspended` y `suspended -> active`. Cualquier otra transicion se rechaza con 422 y un mensaje claro: `draft -> suspended`, `active -> draft`, `suspended -> draft` y toda salida de `archived`. Un conjunto suspendido sigue sin ser escribible en sus demas atributos, pero su **reactivacion por la plataforma es una operacion valida**: cierra la deuda "estados no recuperables por API" registrada en L46.
+
+**S68.** Precondiciones de activacion (ACE-C03): un conjunto no pasa a `active` sin (a) un administrador del conjunto (membresia activa con rol `complex_admin` y asignacion de rol vigente), (b) al menos un edificio o una unidad del conjunto, y (c) las politicas minimas completas. Si falta alguna precondicion, la activacion responde 422 con la lista de lo que falta y el conjunto no cambia de estado.
+
 
 ---
 
@@ -161,6 +169,7 @@
 | T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `d09f1d1` (RED 13 fallos, GREEN 17 pruebas) |
 | T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
 | T19 | S58-S61 | Inline (rama `fix/complex-context-leak`, desde `stg`) | Commits `a24fb49` (fix) + `a7f5f26` (prueba end-to-end) |
+| T20 | S65-S68 | Inline (rama `feat/complex-status-privileges`, desde `stg`) | pend |
 
 ---
 
@@ -180,8 +189,9 @@
 | T14 | `employments` (empleados: conjunto + unidad) | T12 | Alta | ✅ Done (specs S20-S24, rama `feat/employments`) |
 | T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media | ✅ Done (specs S25-S30, rama `feat/authorizations`, revision nativa aprobada) |
 | T16 | Suite transversal §6 sobre T7–T15 (aislamiento a nivel de endpoint, alcance de propiedad, titularidad con historial y auditoría, políticas tipadas y auditadas, privacidad de portería). Sin migraciones nuevas | T7-T15 | Alta | ✅ Done (specs S31-S37, rama `feat/core-transversal-suite`, 320 pruebas / 785 assertions, revisión nativa aprobada y quemada) |
-| T17 | Retirar el modelo legacy (`unidades`, `personas`, `persona_unidad`) y migrar sus rutas web (`/units`, `/people`) y API (`/api/v1/units`, `/api/v1/people`) a `property_units` y `people` | T12 | Alta |
-| T18 | Cerrar la API de conjuntos: `auth` y alcance resuelto en servidor, permiso `complex.create`, baja por archivado y proyección de `settings`/`legal_identifier` por permiso | T12 | Alta |
+| T17 | Retirar el modelo legacy (`unidades`, `personas`, `persona_unidad`) y migrar sus rutas web (`/units`, `/people`) y API (`/api/v1/units`, `/api/v1/people`) a `property_units` y `people` | T12 | Alta | ✅ Done (commits `c95aaf3` + `0945ae1` + `5b7c9bf` + `50ee10d` + `0592fcd` + `1e7b730`, mergeado a `stg` en L50) |
+| T18 | Cerrar la API de conjuntos: `auth` y alcance resuelto en servidor, permiso `complex.create`, baja por archivado y proyección de `settings`/`legal_identifier` por permiso | T12 | Alta | ✅ Done (commits `8b2b850` + `3ff75d6` + `8241b8a`, mergeado a `stg` en L50) |
+| T20 | Privilegios y estados del conjunto: suspender/activar solo plataforma, tabla de transiciones validas y precondiciones de activacion (ACE-C03) | T18 | Alta | 🔄 En curso (specs S65-S68) |
 
 ---
 
@@ -635,6 +645,24 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 (d) **Revision nativa.** La ronda anterior (`review-23737772ba0b33bd`) quedo escalada y detenida (L65) por `R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY`; ese lineage queda terminal y su liberacion es decision del mantenedor. Para el codigo corregido, el `assess` devuelve riesgo medio con `reviewDue: false` (`under_budget`): el proveedor no exige otra ronda y el plan deja la verificacion en el verificador independiente.
 
 (e) **Commits.** `60163fe` (fix del ambito global y adaptacion de los 11 archivos de test) sobre `d63ff56`.
+
+**L67.** Apertura del work unit **T20 (privilegios y estados del conjunto)**, con specs S65-S68.
+
+(a) **Solicitud del usuario (verbatim):** "revisa para ver que nos falta de core". La revision (feature doc, spec base, `routes/api.php`, `routes/web.php`, `app/Http/Controllers`, `app/Policies`, `app/Settings/ComplexSettingsCatalog.php`, `database/seeders/SystemRoleSeeder.php` y la suite de `tests/Feature`) concluyo que el nucleo de datos del core esta cerrado (T1-T19, 519 pruebas en verde) y que el primer hueco por severidad es un **defecto de privilegio**, no una funcionalidad faltante.
+
+(b) **Defecto a corregir.** `app/Http/Requests/UpdateResidentialComplexRequest.php:70` valida `status` contra el enum completo y `app/Policies/ResidentialComplexPolicy.php:57-60` autoriza con `complex.edit`, que el rol `complex_admin` tiene sembrado (`database/seeders/SystemRoleSeeder.php:94-95`): un administrador de conjunto puede `PATCH /api/v1/buildings/{uuid}` con `status: suspended` sobre su propio conjunto, algo que la matriz de §1.3 reserva a la plataforma. El conjunto suspendido deja de ser escribible (`ResidentialComplexStatus::isWritable()`) y `suspended` no tiene vuelta atras: el admin puede dejar su propio conjunto bloqueado e irrecuperable por API (deuda registrada en L46).
+
+(c) **Decision del usuario (verbatim):** "T20 Privilegios y estados del conjunto" como proxima frontera, y "Enmendar el spec" para la divergencia de §6 (la suite es PHPUnit con Pest como runner, no estilo `it()`/`expect()`).
+
+(d) **Alcance:** (1) el estado del conjunto por API es de plataforma; (2) la baja por archivado conserva su puerta propia (`DELETE`, `complex.edit`, decision de producto de L43) y `archived` es terminal; (3) tabla de transiciones validas con 422 y mensaje claro para el resto; (4) precondiciones de activacion de ACE-C03 (administrador vigente, al menos un edificio o unidad, politicas minimas completas) con 422 y la lista de lo que falta.
+
+(e) **Lectura operativa de "politicas minimas completas" (ACE-C03):** el conjunto define los cinco grupos del catalogo cerrado de §1.4 (`regional`, `access`, `people`, `ownership`, `privacy`). Es la lectura mas estrecha que no inventa un vocabulario de claves nuevas (el catalogo no define un subconjunto "obligatorio") y coincide con el paso 3 del asistente ("Revisar roles sembrados y politicas por defecto -> Politicas validadas"). Queda como decision propia del padre, revisable.
+
+(f) **Decisiones:** la reactivacion de un conjunto suspendido la hace la plataforma con `PATCH status=active` (cierra la deuda "estados no recuperables por API" de L46); un conjunto suspendido sigue sin ser escribible en sus demas atributos; el archivado tiene una sola puerta (`DELETE` con `complex.edit`): el `PATCH` no archiva, porque la tabla de transiciones de S67 no incluye `-> archived`; el enmiendo del spec §6 es local porque `/docs` esta en `.gitignore` (la documentacion del core no esta versionada: es el hueco T41 de la revision).
+
+(g) **Rama y entrega:** rama `feat/complex-status-privileges` creada desde `stg`, con work unit propio y PR propio con base `stg` (el push y la apertura del PR son decision del usuario).
+
+(h) **Enmiendo del spec §6 (decision del usuario):** el titulo de la seccion pasa de "Pruebas prioritarias (Pest)" a "Pruebas prioritarias (PHPUnit, runner Pest)", porque la suite es PHPUnit puro con Pest como runner (`tests/Pest.php:5`, decision ya registrada en L31). El cambio es local: `/docs` esta en `.gitignore` y el spec no esta versionado.
 
 ## Delivery
 

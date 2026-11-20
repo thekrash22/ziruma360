@@ -44,17 +44,20 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Commit: 6d66975 + 75f5085
 
 ## T9: property_unit_relations (anexos, parqueaderos)
-- Status: pending
+- Status: done
+- Commit: 1c9e0e8 (PR #19 mergeado a `stg`)
 - Dependencias: T8
 - Prioridad: Media
 
 ## T10: common_areas + common_property_exclusive_use_assignments
-- Status: pending
+- Status: done
+- Commit: d09f1d1 (PR #19 mergeado a `stg`)
 - Dependencias: T7
 - Prioridad: Media
 
 ## T11: parking_facilities + parking_spaces
-- Status: pending
+- Status: done
+- Commit: a491549 (PR #19 mergeado a `stg`)
 - Dependencias: T7
 - Prioridad: Media
 
@@ -202,3 +205,14 @@ FK compuestas de mismo conjunto, CHECKs de dominio y vigencia, y `ON DELETE NO A
 - Cierre del work unit T19 (L64): commits `a24fb49` (fix) y `a7f5f26` (prueba end-to-end) en la rama `fix/complex-context-leak` desde `stg`. `App\Services\ComplexContext` pierde `private static ?int $testComplexId`: `getCurrentComplexId()` lee solo la sesion y `setCurrentComplexId()` escribe solo la sesion, sin cambios en la API publica ni en los ocho call sites de `app/`. TDD: RED con el codigo previo (tres tests fallan: `1 is null`, `1 is identical to 2` y el end-to-end de dos personas) y GREEN con 4 pruebas / 11 assertions. Suite completa 518 pruebas / 1.438 assertions (baseline previo 514 / 1.427 sin ningun test preexistente alterado) y Pint limpio sobre 219 archivos. `assess` con riesgo alto (escalado al item 1) y `reviewDue: false` (`under_budget`): el proveedor no exige ronda nativa y el plan exige verificador independiente, que dio PASS en S58-S61 sin hallazgos bloqueantes. El verificador corrigio una premisa propia: `User::isMemberOf()` ya exige membresia activa, asi que la divergencia entre `resolveFromRequest` y `ActiveComplexResolver` es de semantica de rechazo (403/409 frente a ignorar el encabezado), no una fuga de privilegio. Deuda residual prioritaria, preexistente y no introducida aqui (H1): sin conjunto resuelto el ambito global de `BelongsToComplex` no filtra nada, y un usuario sin membresia activa que llega a `/buildings` ve edificios de todos los conjuntos; el comportamiento es identico con el codigo previo y queda como work unit propio. H6: `laravel/octane` no esta en `composer.json`, asi que el escenario de worker persistente de S58 es preventivo.
 
 - Ronda nativa de T19 (L65): lineage review-23737772ba0b33bd, tier medio, lentes review-risk y review-reliability, 4 rutas y 187 lineas. Los dos reviewers corrieron (minimax/MiniMax-M2.7) y la ronda quedo escalada y detenida (native_stop_required, estado escalated, sin reintento automatico) por el hallazgo R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY con causalidad unknown_causality: sin conjunto resuelto el ambito global de BelongsToComplex no filtra nada y una peticion sin contexto ve los datos de todos los conjuntos. Es el hallazgo H1 que el verificador independiente ya habia detectado (L64(e)) como preexistente, con sonda diferencial de comportamiento identico contra el codigo previo 70c025e: T19 no lo introduce. No se corrige en T19 porque cambiarlo altera el comportamiento observable de rutas no nombradas por este work unit y tiene impacto en consola, seeders y jobs, que hoy consultan sin filtro; queda como work unit propio con decision de producto. El lineage queda escalated y terminal: liberar la autoridad o desactivar el switch de revision del clon es decision del mantenedor. T19 conserva su verificacion propia (suite 518/1.438 y verificador independiente PASS en S58-S61).
+
+## T20: Privilegios y estados del conjunto
+- Status: in progress
+- Specs: S65, S66, S67, S68
+- Dependencias: T18
+- Prioridad: Alta
+- Rama: `feat/complex-status-privileges` (desde `stg`)
+- Alcance: (1) el estado del conjunto por API es de plataforma (`PATCH status=...` exige rol de plataforma; el `complex_admin` conserva `complex.edit` sobre el resto de los atributos); (2) la baja conserva su puerta propia (`DELETE` con `complex.edit`, decision de producto de L43) y `archived` es terminal; (3) tabla de transiciones validas (`draft -> active`, `active -> suspended`, `suspended -> active`) con 422 y mensaje claro para el resto; (4) precondiciones de activacion de ACE-C03 (administrador vigente, al menos un edificio o unidad, politicas minimas completas) con 422 y la lista de lo que falta
+- Defecto que corrige: `UpdateResidentialComplexRequest.php:70` valida `status` contra el enum completo y `ResidentialComplexPolicy::update()` autoriza con `complex.edit`, que `complex_admin` tiene sembrado: el administrador de conjunto podia suspender su propio conjunto (reservado a la plataforma por la matriz de §1.3) y dejarlo irrecuperable por API
+- Decision del usuario: "T20 Privilegios y estados del conjunto" (frontera) y "Enmendar el spec" para §6 (la suite es PHPUnit con runner Pest)
+- Riesgo: item 2 (privilegios) y item 3 (contrato del endpoint de conjuntos) -> verificacion independiente obligatoria
