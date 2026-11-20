@@ -281,6 +281,19 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->assertSame('Medellin', $complex->fresh()->city);
     }
 
+    public function test_put_updates_the_building_like_patch_does(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($user)
+            ->putJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Cali'])
+            ->assertOk()
+            ->assertJsonPath('data.city', 'Cali');
+
+        $this->assertSame('Cali', $complex->fresh()->city);
+    }
+
     public function test_member_without_edit_permission_cannot_update_the_building(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
@@ -422,6 +435,32 @@ class ResidentialComplexApiTest extends CoreTestCase
         $membership->update(['status' => MembershipStatus::SUSPENDED]);
 
         $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+    }
+
+    public function test_a_revoked_platform_membership_does_not_grant_the_catalog(): void
+    {
+        $complex = $this->makeComplex('Conjunto Uno');
+        $other = $this->makeComplex('Conjunto Dos');
+
+        [$user, $membership] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+        $membership->update(['status' => MembershipStatus::REVOKED]);
+
+        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+
+        $this->assertDatabaseHas('residential_complexes', ['uuid' => $other->uuid]);
+    }
+
+    public function test_a_suspended_platform_membership_cannot_create_a_building(): void
+    {
+        $complex = $this->makeComplex('Torres del Norte');
+        [$user, $membership] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
+        $membership->update(['status' => MembershipStatus::SUSPENDED]);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/buildings', $this->payload())
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('residential_complexes', ['name' => 'Conjunto Nuevo']);
     }
 
     /**
