@@ -143,6 +143,18 @@
 
 **S72.** Alcance de la matriz: las celdas que ya tienen superficie HTTP (estructura fisica, unidades, personas, titularidad) se comprueban ademas de forma funcional; las celdas de ocupantes y empleados quedan **declaradas** (permiso sembrado y verificado por el contrato) hasta que exista su superficie, que es el work unit T23.
 
+**S73.** Superficie de membresias del conjunto en `/api/v1/core/members`, con la sesion y el conjunto activo resueltos en el servidor como el resto de `/api/v1/core/*` y con `complex.manage_members` como permiso de escritura ("Gestionar usuarios y membresias: Admin conjunto ✓", matriz de §1.3). `GET /api/v1/core/members` lista las membresias del conjunto activo con su estado, su `invited_by`, su `joined_at` y sus roles vigentes; un conjunto fuera del alcance responde 404.
+
+**S74.** Invitacion: `POST /api/v1/core/members` con `{document_type, document_number, email}`. La persona se localiza por su documento **dentro del conjunto** (reutilizacion por documento, RN-P02: si ya existe se usa la existente y no se duplica) y la cuenta por su correo. Si no existe la persona, o no existe la cuenta, la invitacion se rechaza con 422 y un mensaje que dice cual de las dos falta. Si la persona ya tiene `user_id` y no es el de esa cuenta, se rechaza con 422 (una persona no queda vinculada a dos cuentas). Si la persona no tiene `user_id`, se vincula a la cuenta invitada **sin duplicarla** (ACE-P03). La membresia se crea en estado `invited` con `invited_by` (el actor) e `invited_at`; si ya existe una membresia para ese par (conjunto, usuario), se responde 422 con un mensaje claro en vez de duplicar.
+
+**S75.** Ciclo de vida de la membresia, con transiciones validas y 422 con mensaje en el resto: `invited -> active` (la acepta el propio invitado, o la activa el administrador con `complex.manage_members`; fija `joined_at`), `active -> suspended` (administrador) y `active|suspended -> revoked` (administrador; terminal, sin vuelta a `active`). Una membresia suspendida o revocada **pierde el acceso de inmediato**, porque la resolucion de permisos y el contexto de conjunto ya filtran por `status = 'active'`.
+
+**S76.** Asignacion de roles: `PUT /api/v1/core/members/{membership}/roles` reemplaza el conjunto de roles de la membresia, con `valid_from` y `valid_until` opcionales por rol. Solo roles del catalogo (de sistema o del propio conjunto): un rol de otro conjunto se rechaza con 422. Un `valid_until` ya vencido no concede permisos, que es la semantica de vigencia que ya viven en `PermissionService` y en las policies.
+
+**S77.** La escritura exige `complex.manage_members` **dentro del conjunto**: un miembro sin ese permiso recibe 403 y un conjunto fuera del alcance responde 404. La aceptacion de la propia invitacion no exige ese permiso: la hace el invitado.
+
+**S78.** Pruebas: aislamiento (conjunto ajeno -> 404), matriz de permisos (con y sin `complex.manage_members`), ciclo de vida completo (invitar -> aceptar -> suspender -> revocar) con las transiciones invalidas en 422, perdida de acceso inmediato al suspender o revocar, reutilizacion por documento sin duplicar persona, rechazo de la invitacion cuando falta la persona o la cuenta, vinculacion sin duplicar (ACE-P03) y asignacion de roles con su vigencia.
+
 
 ---
 
@@ -170,6 +182,7 @@
 | T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
 | T19 | S58-S61 | Inline (rama `fix/complex-context-leak`, desde `stg`) | Commits `a24fb49` (fix) + `a7f5f26` (prueba end-to-end) |
 | T21 | S69-S72 | Inline (rama `feat/permission-matrix`, desde `stg`) | Commits `fa1d5b4` + `8890b51` + registro documental |
+| T22a | S73-S78 | Pendiente (rama `feat/memberships-surface`, encadenada sobre `feat/permission-matrix`) | pend |
 
 ---
 
@@ -679,6 +692,16 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 (h) **Limpieza.** Bases scratch del verificador (`z360_t21_probe`, `z360_t21_baseline`) y archivos de scratch eliminados; el scratch de la ronda de T20 tambien. El repo quedo con `git status --short` vacio.
 
 (i) **Deuda que deja T21:** (i) las claves de permiso de los dominios sin superficie siguen sin existir (T23); (ii) `complex.manage_members` y `complex.view_audit` siguen sembrados **sin puerta de entrada** en la API: es T22 (membresias, roles y auditoria); (iii) la columna de la plataforma en §1.3 no desglosa los permisos de plataforma, de modo que la matriz sigue siendo parcial para ese rol (queda anotado en el contrato, no corregido: es una decision de documento); (iv) `/docs` con el spec del core sigue fuera del control de versiones; (v) al mergear el PR de T20 habra que resolver el conflicto de este feature doc, que T20 y T21 editaron en paralelo (precedente L50).
+
+**L72.** Apertura de T22a (superficie de membresias del conjunto), con las specs S73-S78. T22 es la unidad que el usuario eligio ("T22 Membresias, roles y auditoria") y se parte en subunits, por el ritmo de work units chicos: **T22a** la superficie de membresias (este), **T22b** los roles propios del conjunto (RN-C03) y **T22c** la consulta de auditoria (\`complex.view_audit\`) con la extension del trait \`Auditable\` a los dominios que faltan (§1.6).
+
+(a) **Por que T22a primero.** \`complex.manage_members\` esta sembrado desde el catalogo inicial y **no tiene ninguna puerta de entrada**: no se puede invitar, suspender ni revocar a nadie, y la fila "Gestionar usuarios y membresias" de la matriz de §1.3 no es operable. Ademas §6 exige de forma explicita el caso "Membresia suspendida o revocada pierde acceso inmediato", que hoy no tiene ninguna superficie que lo ejercite.
+
+(b) **Decisiones propias del padre (producto).** (i) La invitacion se identifica por la pareja (conjunto, usuario) porque la tabla de membresias **no tiene token ni correo**: no se inventa un token ni se depende de un transportador de correo que el proyecto no tiene. (ii) La invitacion se hace por la identidad de la persona (documento) y el correo de la cuenta, de modo que el enlace con \`people.user_id\` respeta RN-P02 (reutilizacion por documento, sin duplicar) y ACE-P03 (una persona registrada sin cuenta se vincula sin duplicarse). (iii) La aceptacion de la invitacion la hace el propio invitado y no exige \`complex.manage_members\`; el administrador tambien puede activarla. (iv) Revocar es terminal: no hay vuelta a \`active\`. (v) Los endpoints de T22a no necesitan claves nuevas del catalogo: \`complex.manage_members\` ya existe.
+
+(c) **Rama y entrega.** \`feat/memberships-surface\`, **encadenada sobre \`feat/permission-matrix\`** (no desde \`stg\`): asi el doc sigue una sola cadena y hay un unico punto de conflicto, el de las entradas de T20, que se resolvera de forma explicita cuando el usuario mergee el PR de T20 (precedente L50). El PR de T22a se encadena sobre el de T21.
+
+(d) **Deuda que deja T22a:** los roles propios del conjunto (RN-C03) y la consulta de auditoria (\`complex.view_audit\`) siguen pendientes (T22b y T22c); la invitacion no envia correo: el admin comparte el enlace de aceptacion, y el envio de correo es trabajo futuro.
 
 ## Delivery
 
