@@ -1,37 +1,51 @@
 <script setup lang="ts">
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
 
-interface TipoDocumento {
-  value: string;
-  label: string;
+interface PageProps {
+  documentTypes: Array<{
+    value: string;
+    label: string;
+  }>;
+  statuses: Array<{
+    value: string;
+    label: string;
+  }>;
+  canViewDocument: boolean;
 }
 
-interface Props {
-  documentTypes: TipoDocumento[];
-}
-
-const props = defineProps<Props>();
+const props = defineProps<PageProps>();
 
 const form = useForm({
-  nombre: '',
-  apellido: '',
-  tipo_documento: 'CC',
-  numero_documento: '',
+  full_name: '',
+  first_name: '',
+  last_name: '',
+  document_type: '',
+  document_number: '',
+  phone: '',
   email: '',
-  telefono: '',
-  telefono_alternativo: '',
-  notas: '',
+  birth_date: '',
+  status: 'active',
+  notes: '',
 });
 
-const isSubmitting = computed(() => form.processing);
+const submit = () => {
+  form.transform((data) => {
+    const payload: Record<string, string> = { ...data };
 
-const handleSubmit = () => {
+    if (!props.canViewDocument) {
+      // El documento de identidad es el par (tipo, numero) y escribir
+      // cualquiera de los dos campos exige `person.view_document`: sin el
+      // permiso no se envia ninguno de los dos.
+      delete payload.document_number;
+      delete payload.document_type;
+    }
+
+    return payload;
+  });
+
   form.post(route('people.store'), {
-    onSuccess: () => {
-      // Redirect handled by controller
-    },
+    preserveScroll: true,
   });
 };
 </script>
@@ -41,186 +55,184 @@ const handleSubmit = () => {
 
   <AppLayout>
     <div class="mb-6">
-      <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-        <a :href="route('people.index')" class="hover:text-gray-700 dark:hover:text-gray-300">Personas</a>
-        <span>/</span>
-        <span class="text-gray-800 dark:text-white">Nueva Persona</span>
-      </div>
+      <h2 class="text-title-md font-semibold text-gray-800 dark:text-white">
+        Nueva Persona
+      </h2>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Registra una persona del conjunto. Si el documento ya existe, se reutiliza su ficha.
+      </p>
     </div>
 
     <div class="rounded-sm border border-stroke bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <h2 class="mb-6 text-lg font-semibold text-gray-800 dark:text-white">
-        Crear Nueva Persona
-      </h2>
-
-      <form @submit.prevent="handleSubmit" class="space-y-6">
-        <!-- Personal Info -->
+      <form @submit.prevent="submit">
         <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <!-- Nombre completo -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Nombre <span class="text-red-500">*</span>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Nombre completo <span class="text-red-500">*</span>
             </label>
             <input
-              v-model="form.nombre"
+              v-model="form.full_name"
               type="text"
-              placeholder="Nombre(s)"
-              :class="[
-                'w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-1',
-                form.errors.nombre
-                  ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white'
-              ]"
+              required
+              placeholder="Ej: Ana Torres"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
-            <p v-if="form.errors.nombre" class="mt-1 text-sm text-red-500">
-              {{ form.errors.nombre }}
-            </p>
+            <p v-if="form.errors.full_name" class="mt-1 text-xs text-red-500">{{ form.errors.full_name }}</p>
           </div>
 
+          <!-- Nombres -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Apellido <span class="text-red-500">*</span>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Nombres
             </label>
             <input
-              v-model="form.apellido"
+              v-model="form.first_name"
               type="text"
-              placeholder="Apellido(s)"
-              :class="[
-                'w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-1',
-                form.errors.apellido
-                  ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white'
-              ]"
+              placeholder="Ej: Ana Maria"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
-            <p v-if="form.errors.apellido" class="mt-1 text-sm text-red-500">
-              {{ form.errors.apellido }}
-            </p>
+            <p v-if="form.errors.first_name" class="mt-1 text-xs text-red-500">{{ form.errors.first_name }}</p>
           </div>
-        </div>
 
-        <!-- Document Info -->
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <!-- Apellidos -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Tipo de Documento <span class="text-red-500">*</span>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Apellidos
+            </label>
+            <input
+              v-model="form.last_name"
+              type="text"
+              placeholder="Ej: Torres"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            />
+            <p v-if="form.errors.last_name" class="mt-1 text-xs text-red-500">{{ form.errors.last_name }}</p>
+          </div>
+
+          <!-- Tipo de documento -->
+          <div>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Tipo de documento
             </label>
             <select
-              v-model="form.tipo_documento"
-              :class="[
-                'w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-1',
-                form.errors.tipo_documento
-                  ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white'
-              ]"
+              v-model="form.document_type"
+              :disabled="!props.canViewDocument"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             >
-              <option v-for="doc in props.documentTypes" :key="doc.value" :value="doc.value">
-                {{ doc.label }} ({{ doc.value }})
+              <option value="">Sin tipo</option>
+              <option v-for="type in props.documentTypes" :key="type.value" :value="type.value">
+                {{ type.label }}
               </option>
             </select>
-            <p v-if="form.errors.tipo_documento" class="mt-1 text-sm text-red-500">
-              {{ form.errors.tipo_documento }}
+            <p v-if="!props.canViewDocument" class="mt-1 text-xs text-gray-500">
+              No tienes el permiso para ver el documento en claro: la persona se registra sin documento.
             </p>
+            <p v-if="form.errors.document_type" class="mt-1 text-xs text-red-500">{{ form.errors.document_type }}</p>
           </div>
 
+          <!-- Numero de documento -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Número de Documento <span class="text-red-500">*</span>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Numero de documento
             </label>
             <input
-              v-model="form.numero_documento"
+              v-model="form.document_number"
               type="text"
-              placeholder="Número sin puntos ni espacios"
-              :class="[
-                'w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-1',
-                form.errors.numero_documento
-                  ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white'
-              ]"
+              :disabled="!props.canViewDocument"
+              :placeholder="props.canViewDocument ? 'Ej: 12345678' : 'Documento enmascarado'"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
-            <p v-if="form.errors.numero_documento" class="mt-1 text-sm text-red-500">
-              {{ form.errors.numero_documento }}
+            <p v-if="!props.canViewDocument" class="mt-1 text-xs text-gray-500">
+              No tienes el permiso para ver el documento en claro: la persona se registra sin documento.
             </p>
+            <p v-if="form.errors.document_number" class="mt-1 text-xs text-red-500">{{ form.errors.document_number }}</p>
           </div>
-        </div>
 
-        <!-- Contact Info -->
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <!-- Telefono -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Correo Electrónico
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Telefono
+            </label>
+            <input
+              v-model="form.phone"
+              type="text"
+              placeholder="Ej: 3001234567"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            />
+            <p v-if="form.errors.phone" class="mt-1 text-xs text-red-500">{{ form.errors.phone }}</p>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Email
             </label>
             <input
               v-model="form.email"
               type="email"
-              placeholder="correo@ejemplo.com"
-              :class="[
-                'w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-1',
-                form.errors.email
-                  ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white'
-              ]"
+              placeholder="Ej: ana@example.com"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
-            <p v-if="form.errors.email" class="mt-1 text-sm text-red-500">
-              {{ form.errors.email }}
-            </p>
+            <p v-if="form.errors.email" class="mt-1 text-xs text-red-500">{{ form.errors.email }}</p>
           </div>
 
+          <!-- Fecha de nacimiento -->
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Teléfono Principal
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Fecha de nacimiento
             </label>
             <input
-              v-model="form.telefono"
-              type="text"
-              placeholder="300 123 4567"
-              class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              v-model="form.birth_date"
+              type="date"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
+            <p v-if="form.errors.birth_date" class="mt-1 text-xs text-red-500">{{ form.errors.birth_date }}</p>
+          </div>
+
+          <!-- Estado -->
+          <div>
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Estado
+            </label>
+            <select
+              v-model="form.status"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            >
+              <option v-for="status in props.statuses" :key="status.value" :value="status.value">
+                {{ status.label }}
+              </option>
+            </select>
+            <p v-if="form.errors.status" class="mt-1 text-xs text-red-500">{{ form.errors.status }}</p>
+          </div>
+
+          <!-- Notas -->
+          <div class="md:col-span-2">
+            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Notas
+            </label>
+            <textarea
+              v-model="form.notes"
+              rows="3"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            />
+            <p v-if="form.errors.notes" class="mt-1 text-xs text-red-500">{{ form.errors.notes }}</p>
           </div>
         </div>
 
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Teléfono Alternativo
-          </label>
-          <input
-            v-model="form.telefono_alternativo"
-            type="text"
-            placeholder="Fijo u otro móvil"
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-          />
-        </div>
-
-        <!-- Notes -->
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Notas
-          </label>
-          <textarea
-            v-model="form.notas"
-            rows="3"
-            placeholder="Información adicional sobre la persona..."
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-          />
-        </div>
-
-        <!-- Actions -->
-        <div class="flex items-center justify-end gap-3 border-t border-gray-200 pt-6 dark:border-gray-800">
+        <!-- Buttons -->
+        <div class="mt-8 flex items-center justify-end gap-3 border-t border-gray-200 pt-6 dark:border-gray-800">
           <a
             :href="route('people.index')"
-            class="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            class="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             Cancelar
           </a>
           <button
             type="submit"
-            :disabled="isSubmitting"
-            :class="[
-              'rounded-lg px-4 py-2.5 text-sm font-medium text-white',
-              isSubmitting
-                ? 'bg-brand-400 cursor-not-allowed'
-                : 'bg-brand-500 hover:bg-brand-600'
-            ]"
+            :disabled="form.processing"
+            class="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
           >
-            {{ isSubmitting ? 'Guardando...' : 'Crear Persona' }}
+            Crear Persona
           </button>
         </div>
       </form>

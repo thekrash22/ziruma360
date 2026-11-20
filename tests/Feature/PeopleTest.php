@@ -110,34 +110,52 @@ class PeopleTest extends TestCase
         $this->assertEquals($otherComplex->id, $person->residential_complex_id);
     }
 
-    public function test_null_document_number_is_allowed_multiple_times(): void
+    public function test_a_person_without_an_identity_document_is_allowed_multiple_times(): void
     {
+        // El documento de identidad es atomico (tipo y numero van juntos): una
+        // persona sin documento tiene los dos campos a null, y ese caso si
+        // admite varias filas (los nulos no colisionan en el indice
+        // parcial). El rechazo por la base de un documento a medias y la
+        // validacion 422 de la aplicacion viven en
+        // tests/Feature/Core/PersonIdentityAtomicityTest.php.
         Person::factory()->for($this->complex)->create([
-            'document_type' => TipoDocumento::CC,
+            'document_type' => null,
             'document_number' => null,
         ]);
 
         $person = Person::factory()->for($this->complex)->create([
-            'document_type' => TipoDocumento::CC,
+            'document_type' => null,
             'document_number' => null,
         ]);
 
         $this->assertNotNull($person->id);
+        $this->assertNull($person->document_type);
+        $this->assertNull($person->document_number);
     }
 
-    public function test_null_document_type_is_allowed_multiple_times(): void
+    public function test_a_person_without_document_type_and_number_is_allowed_multiple_times(): void
     {
+        // Mismo caso legitimo que el test anterior, con la comprobacion
+        // explicita en la base: no hay documento, asi que no hay colision.
+        // Un documento a medias (solo el tipo o solo el numero) no es
+        // admisible: lo rechaza el CHECK `people_identity_document_atomic`,
+        // como se comprueba en tests/Feature/Core/PersonIdentityAtomicityTest.php.
         Person::factory()->for($this->complex)->create([
             'document_type' => null,
-            'document_number' => '3030303030',
+            'document_number' => null,
         ]);
 
         $person = Person::factory()->for($this->complex)->create([
             'document_type' => null,
-            'document_number' => '3030303030',
+            'document_number' => null,
         ]);
 
         $this->assertNotNull($person->id);
+        $this->assertDatabaseHas('people', [
+            'id' => $person->id,
+            'document_type' => null,
+            'document_number' => null,
+        ]);
     }
 
     // ==================== Enums ====================
