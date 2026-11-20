@@ -26,7 +26,7 @@ class PersonResource extends JsonResource
             'full_name' => $this->full_name,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
-            'document_type' => $this->document_type?->value,
+            'document_type' => $this->documentTypeFor($request),
             'document_number' => $this->documentNumberFor($request),
             'phone' => $this->phone,
             'email' => $this->email,
@@ -34,6 +34,34 @@ class PersonResource extends JsonResource
             'status' => $this->status?->value,
             'data_consent_at' => $this->data_consent_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * El tipo de documento solo con permiso explicito; sin el, se oculta.
+     *
+     * El documento de identidad es el par (tipo, numero): si el numero va
+     * enmascarado, el tipo tambien se oculta, para que la lectura no exponga
+     * mas dato que la escritura.
+     */
+    private function documentTypeFor(Request $request): ?string
+    {
+        $type = $this->document_type;
+
+        if ($type === null) {
+            return null;
+        }
+
+        $user = $request->user();
+
+        if ($user !== null && PermissionService::has(
+            $user,
+            ComplexPermission::PERSON_VIEW_DOCUMENT,
+            (int) $this->residential_complex_id
+        )) {
+            return $type->value;
+        }
+
+        return null;
     }
 
     /**

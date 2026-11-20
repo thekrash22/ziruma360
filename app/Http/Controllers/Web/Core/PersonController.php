@@ -530,13 +530,17 @@ class PersonController extends Controller
      */
     protected function summary(Person $person, User $user, int $complexId): array
     {
+        $documentType = $this->documentType($person, $user, $complexId);
+
         return [
             'uuid' => $person->uuid,
             'full_name' => $person->full_name,
             'first_name' => $person->first_name,
             'last_name' => $person->last_name,
-            'document_type' => $person->document_type?->value,
-            'document_type_label' => $person->document_type?->label(),
+            'document_type' => $documentType,
+            'document_type_label' => $documentType !== null
+                ? $person->document_type?->label()
+                : null,
             'document_number' => $this->documentNumber($person, $user, $complexId),
             'phone' => $person->phone,
             'email' => $person->email,
@@ -683,6 +687,26 @@ class PersonController extends Controller
         }
 
         return $this->mask($number);
+    }
+
+    /**
+     * El tipo de documento solo con permiso explicito; sin el, se oculta.
+     *
+     * El documento de identidad es el par (tipo, numero): si el numero va
+     * enmascarado, el tipo tambien se oculta, para que la lectura no exponga
+     * mas dato que la escritura.
+     */
+    protected function documentType(Person $person, User $user, int $complexId): ?string
+    {
+        if ($person->document_type === null) {
+            return null;
+        }
+
+        if (PermissionService::has($user, ComplexPermission::PERSON_VIEW_DOCUMENT, $complexId)) {
+            return $person->document_type->value;
+        }
+
+        return null;
     }
 
     /**

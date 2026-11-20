@@ -135,7 +135,7 @@ const submit = () => {
               :disabled="!props.canViewDocument"
               class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             >
-              <option value="">Sin tipo</option>
+              <option value="">{{ props.canViewDocument ? 'Sin tipo' : (props.person.document_number ? 'Oculto por permisos' : 'Sin documento') }}</option>
               <option v-for="type in props.documentTypes" :key="type.value" :value="type.value">
                 {{ type.label }}
               </option>
