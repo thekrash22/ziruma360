@@ -144,7 +144,7 @@
 | T18 | S42-S49 | Inline (rama `feat/api-buildings-guard`, desde `stg`) | Commits `8b2b850` + `6607256` + `aeb5cc4` + `3ff75d6` + `8241b8a` |
 | T9 | S50-S52 | Inline (rama `feat/physical-secondary`, desde `stg`) | Commit `1c9e0e8` (RED 8 fallos, GREEN 9 pruebas) |
 | T10 | S53-S54 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `d09f1d1` (RED 13 fallos, GREEN 17 pruebas) |
-| T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit pendiente |
+| T11 | S55-S57 | Worker (rama `feat/physical-secondary`, desde `stg`) | Commit `a491549` (RED 10 fallos, GREEN 15 pruebas) |
 
 ---
 
@@ -469,9 +469,29 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (g) **Riesgo:** `Risk: none` (esquema aditivo, sin superficie HTTP ni cambios en datos existentes).
 
+**L54.** T11 (`parking_facilities` + `parking_spaces`) implementado por un worker (`gentle-ai-worker`, task `mwoj7s0w-2-2v2f`) y commiteado en `a491549` (rama `feat/physical-secondary`).
+
+(a) **Alcance:** `parking_facilities` (residential_complex_id, name, facility_type, total_capacity, operational_capacity, assignment_mode, status, notes) y `parking_spaces` (residential_complex_id, parking_facility_id, number, status, notes), con los modelos `ParkingFacility` y `ParkingSpace` y los enums `ParkingFacilityStatus` y `ParkingSpaceStatus`. Sin reservas, disponibilidad ni concurrencia: eso pertenece al modulo de rentas cortas.
+
+(b) **Garantias a nivel de motor:** CHECK de `total_capacity` y `operational_capacity` no negativos y de `operational_capacity <= total_capacity` cuando ambas existen; CHECK de dominio de `status` en las dos tablas; FK compuesta `(residential_complex_id, parking_facility_id)` hacia `parking_facilities (residential_complex_id, id)` con `ON DELETE CASCADE` (rechaza cruces entre conjuntos); unicidad del numero de espacio por instalacion.
+
+(c) **Decision de dominio:** `facility_type` y `assignment_mode` quedan como cadenas libres porque el spec §3.10 los nombra sin enumerar sus valores; el `status` si cierra el dominio en `active`/`inactive`. `assignment_mode` queda `NOT NULL` porque el spec lo lista como campo de la instalacion.
+
+(d) **TDD:** RED observado (10 fallos y 4 pases, `Class "App\Models\ParkingFacility" not found`) y GREEN con **15 pruebas y 25 assertions** en `tests/Feature/ParkingFacilitiesTest.php`, mas dos pruebas de triangulacion (espacio de un conjunto contra instalacion de otro, y el mismo numero de espacio repetido en otra instalacion del mismo conjunto).
+
+(e) **Verificacion del padre:** suite completa **494 pruebas / 1.398 assertions** en verde contra PostgreSQL real `z360_test` (479 previas + 15 nuevas); Pint limpio sobre los 218 archivos del proyecto; lectura de las dos migraciones y de las 15 pruebas sin hallazgos propios.
+
+(f) **Slice y revision:** T11 mide **7 rutas y 642 lineas**; el `assess` del proveedor sobre el slice acumulado T9+T10+T11 (22 rutas, 1.965 lineas contra `1fcec860d8bb9fba39ce827334bd348fce6482d6`) devuelve **riesgo medio** con **`reviewDue: false`** (`under_budget`): el proveedor no exige ronda nativa para esta generacion.
+
+(g) **Riesgo:** `Risk: none` (esquema aditivo, sin superficie HTTP ni cambios en datos existentes).
+
+(h) **Cierre de la unidad:** las cuatro migraciones nuevas quedan aplicadas en la base de desarrollo; el push y la apertura de los PRs apilados son decision del usuario.
+
 ## Delivery
 
-- **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`; T10 y T11 pendientes), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. T9 mide **5 rutas y 396 lineas** y T10 **8 rutas y 848 lineas** contra `stg`; el `assess` del proveedor sobre el slice acumulado (15 rutas, 1.305 lineas) devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion.
+- **Cadena T9-T11 (estructura fisica secundaria).** Rama `feat/physical-secondary` creada desde `stg` (`1fcec86`): tres work units en commits separados (T9 `1c9e0e8`, T10 `d09f1d1`, T11 `a491549`), entregados como PRs apilados con base `stg` (uno por work unit), siguiendo la cadena de entrega previa. El slice acumulado mide **20 rutas y 1.886 lineas** contra `stg` (T9: 5/396, T10: 8/848, T11: 7/642); el `assess` del proveedor sobre ese slice devuelve riesgo medio con `reviewDue: false` (`under_budget`), asi que el proveedor no exige ronda nativa para esta generacion. El push y la apertura de los PRs quedan como decision del usuario.
+
+- **Espejo Engram pendiente.** El topic `odd/ziruma360-core-admin/tasks` no se pudo guardar en Engram en esta sesion: las llamadas a las herramientas de memoria fallan con los argumentos corruptos (`mem_save` y `codemode` devuelven `Invalid arguments` o `{}`). El texto del espejo queda en `/tmp/odd-mirror-ziruma360-core.md` y el espejo de archivo `odd/ziruma360-core-admin/tasks.md` esta al dia.
 
 - T17 se desarrolla en la rama `feat/legacy-retirement`, creada desde `stg` (que ya integra T8 y T12-T16 mas la correccion del nombre de tabla `unidades`). Limite de slice medido al cerrar: **7.054 lineas en 40 rutas y 4 commits** sobre `stg` (`c95aaf3` alcance documental con las specs S38-S41 y la entrada L38, `0945ae1` unidad A: la API legacy re-apuntada al dominio nuevo con `auth` y conjunto activo en el servidor, `5b7c9bf` unidad B: la UI web `/units` y `/people` reescrita sobre `property_units` y `people`, `50ee10d` unidad C: retirada del legacy con la migracion `drop` y la guarda de escritura del documento de identidad), mas el commit documental de cierre (`6c7098e`, que solo anade registro) y la correccion de los dos hallazgos bloqueantes de la verificacion independiente (`0592fcd`, que vuelve atomico el documento de identidad y exige `person.view_document` para escribir cualquiera de sus dos campos). El diff acumulado contra `origin/main` (89 archivos y mas de 18.000 lineas) **no** es un slice entregable ni revisable: la entrega de T17 es **un PR propio con base `stg`**, nunca `main` con el acumulado. La cadena de entrega queda `feat/physical-structure` (T8) -> `feat/leases` (T13) -> `feat/employments` (T14) -> `feat/authorizations` (T15) -> `feat/core-transversal-suite` (T16) -> `feat/legacy-retirement` (T17), cada work unit con su propio PR y su `size:exception` cuando la unidad cohesiva supera el corte de ~400 lineas. T17 anade superficie HTTP (alta y baja de unidades y personas en la API, y las ocho pantallas web migradas al dominio nuevo), elimina las tres tablas legacy y cierra el defecto por el que `/api/v1/units` y `/api/v1/people` exponian datos sin autenticar. El PR queda manual porque en este entorno no hay `gh`, `hub`, `glab` ni token de API: la direccion es `https://github.com/thekrash22/ziruma360/pull/new/feat/legacy-retirement` con base `stg`. Entrega de T17: el usuario autorizo el push y se ejecuto (`origin/feat/legacy-retirement` en `0592fcd`; la rama lleva 5 commits de codigo mas los documentales).
 
