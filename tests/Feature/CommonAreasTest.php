@@ -382,6 +382,75 @@ class CommonAreasTest extends TestCase
         $this->assertDatabaseCount('common_areas', 1);
     }
 
+    public function test_the_database_rejects_a_second_active_assignment_for_the_same_common_area(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-11',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $otherUnit = $this->unit($this->complex, 'A-102');
+
+        $this->expectException(QueryException::class);
+
+        DB::table('common_property_exclusive_use_assignments')->insert([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $otherUnit->id,
+            'valid_from' => '2026-02-01',
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_a_new_active_assignment_is_allowed_after_the_previous_one_is_ended(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-12',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+        $otherUnit = $this->unit($this->complex, 'A-102');
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $assignment->update(['status' => ExclusiveUseAssignmentStatus::ENDED]);
+
+        $second = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $otherUnit->id,
+            'valid_from' => '2026-02-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $this->assertSame(ExclusiveUseAssignmentStatus::ENDED, $assignment->fresh()->status);
+        $this->assertSame(ExclusiveUseAssignmentStatus::ACTIVE, $second->fresh()->status);
+        $this->assertDatabaseCount('common_property_exclusive_use_assignments', 2);
+    }
+
     public function test_deleting_a_complex_removes_its_common_areas_when_there_are_no_assignments(): void
     {
         CommonArea::create([

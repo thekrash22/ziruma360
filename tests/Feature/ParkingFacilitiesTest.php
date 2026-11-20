@@ -120,6 +120,22 @@ class ParkingFacilitiesTest extends TestCase
         $this->assertSame('free-first-come-first-served', $facility->fresh()->assignment_mode);
     }
 
+    public function test_a_parking_facility_with_numbered_spaces_cannot_be_deleted(): void
+    {
+        $facility = $this->facility($this->complex);
+
+        ParkingSpace::create([
+            'residential_complex_id' => $this->complex->id,
+            'parking_facility_id' => $facility->id,
+            'number' => 'P-01',
+            'status' => ParkingSpaceStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $facility->delete();
+    }
+
     public function test_the_database_rejects_an_operational_capacity_greater_than_the_total_capacity(): void
     {
         $this->expectException(QueryException::class);

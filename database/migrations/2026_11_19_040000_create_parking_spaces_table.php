@@ -17,8 +17,11 @@ use Illuminate\Support\Facades\DB;
  *   - FK compuesta (residential_complex_id, parking_facility_id) ->
  *     parking_facilities (residential_complex_id, id), que rechaza cruces
  *     entre conjuntos (ACE-C02/ACE-P07)
- *   - unicidad del numero de espacio por instalacion
+ * *   - unicidad del numero de espacio por instalacion
  *   - CHECK de dominio de status
+ *   - ON DELETE RESTRICT en la FK de la instalacion: una instalacion con
+ *     espacios numerados no se borra, se desactiva (status inactive) y sus
+ *     espacios conservan su historial
  */
 return new class extends Migration
 {
@@ -40,7 +43,7 @@ return new class extends Migration
                 CONSTRAINT parking_spaces_parking_facility_fk
                     FOREIGN KEY (residential_complex_id, parking_facility_id)
                     REFERENCES parking_facilities (residential_complex_id, id)
-                    ON DELETE CASCADE,
+                    ON DELETE RESTRICT,
                 CONSTRAINT parking_spaces_status_check
                     CHECK (status IN ('active', 'inactive'))
             )

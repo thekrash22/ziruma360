@@ -457,7 +457,7 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (a) **Alcance:** `common_areas` (residential_complex_id, building_id nullable, name, code, area_type con el dominio del spec §3.8, description, location, capacity, area_m2, is_reservable, status, features jsonb) y `common_property_exclusive_use_assignments` (common_area_id, property_unit_id, valid_from, valid_until, document_reference, status), con los modelos `CommonArea` y `CommonPropertyExclusiveUseAssignment` y los enums `CommonAreaType`, `CommonAreaStatus` y `ExclusiveUseAssignmentStatus`. Sin API ni UI, por la [Propuesta] del spec §3.9 y la decision D-07.
 
-(b) **Garantias a nivel de motor:** FK compuesta `(residential_complex_id, building_id)` hacia `buildings (residential_complex_id, id)` con `ON DELETE NO ACTION` (a proposito, no RESTRICT: RESTRICT es inmediato y habria reventado el borrado en cascada del conjunto; NO ACTION se verifica al cierre de la sentencia, de modo que un edificio con areas comunes sigue sin poder borrarse y el conjunto se borra con sus areas); CHECK de dominio de `area_type` y de `status`; CHECK de `capacity` y `area_m2` no negativos; unicidad de `code` por conjunto; FKs compuestas de la asignacion hacia `common_areas` y `property_units` con `ON DELETE CASCADE`; CHECK de vigencia y de dominio del estado de la asignacion. La migracion crea tambien el indice unico `buildings (residential_complex_id, id)`, que no existia y que la FK compuesta exige.
+(b) **Garantias a nivel de motor:** FK compuesta `(residential_complex_id, building_id)` hacia `buildings (residential_complex_id, id)` con `ON DELETE NO ACTION` (a proposito, no RESTRICT: RESTRICT es inmediato y habria reventado el borrado en cascada del conjunto; NO ACTION se verifica al cierre de la sentencia, de modo que un edificio con areas comunes sigue sin poder borrarse y el conjunto se borra con sus areas); CHECK de dominio de `area_type` y de `status`; CHECK de `capacity` y `area_m2` no negativos; unicidad de `code` por conjunto; FKs compuestas de la asignacion hacia `common_areas` y `property_units` con `ON DELETE RESTRICT`, de modo que el historial de asignaciones se conserva: un bien comun, una unidad o un conjunto con asignaciones no se borra, se desactiva y la asignacion se cierra por estado (`ended`/`revoked`); indice unico parcial por area comun entre las asignaciones activas, para que exista una sola asignacion vigente por bien comun; CHECK de vigencia y de dominio del estado de la asignacion. La migracion crea tambien el indice unico `buildings (residential_complex_id, id)`, que no existia y que la FK compuesta exige.
 
 (c) **TDD:** RED observado (13 fallos y 2 pases, `Class "App\Models\CommonArea" not found`) y GREEN con **17 pruebas y 29 assertions** en `tests/Feature/CommonAreasTest.php`, con dos pruebas de triangulacion (borrado en cascada del conjunto con areas y asignaciones, y edificio con areas comunes que no se borra).
 
@@ -473,7 +473,7 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 (a) **Alcance:** `parking_facilities` (residential_complex_id, name, facility_type, total_capacity, operational_capacity, assignment_mode, status, notes) y `parking_spaces` (residential_complex_id, parking_facility_id, number, status, notes), con los modelos `ParkingFacility` y `ParkingSpace` y los enums `ParkingFacilityStatus` y `ParkingSpaceStatus`. Sin reservas, disponibilidad ni concurrencia: eso pertenece al modulo de rentas cortas.
 
-(b) **Garantias a nivel de motor:** CHECK de `total_capacity` y `operational_capacity` no negativos y de `operational_capacity <= total_capacity` cuando ambas existen; CHECK de dominio de `status` en las dos tablas; FK compuesta `(residential_complex_id, parking_facility_id)` hacia `parking_facilities (residential_complex_id, id)` con `ON DELETE CASCADE` (rechaza cruces entre conjuntos); unicidad del numero de espacio por instalacion.
+(b) **Garantias a nivel de motor:** CHECK de `total_capacity` y `operational_capacity` no negativos y de `operational_capacity <= total_capacity` cuando ambas existen; CHECK de dominio de `status` en las dos tablas; FK compuesta `(residential_complex_id, parking_facility_id)` hacia `parking_facilities (residential_complex_id, id)` con `ON DELETE RESTRICT` (rechaza cruces entre conjuntos y una instalacion con espacios numerados no se borra, se desactiva); unicidad del numero de espacio por instalacion.
 
 (c) **Decision de dominio:** `facility_type` y `assignment_mode` quedan como cadenas libres porque el spec §3.10 los nombra sin enumerar sus valores; el `status` si cierra el dominio en `active`/`inactive`. `assignment_mode` queda `NOT NULL` porque el spec lo lista como campo de la instalacion.
 
@@ -486,6 +486,22 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 (g) **Riesgo:** `Risk: none` (esquema aditivo, sin superficie HTTP ni cambios en datos existentes).
 
 (h) **Cierre de la unidad:** las cuatro migraciones nuevas quedan aplicadas en la base de desarrollo; el push y la apertura de los PRs apilados son decision del usuario.
+
+**L55.** Revision nativa (receipt-driven development) del work unit T9-T11 y correccion de los hallazgos del proveedor.
+
+(a) **Revision.** El proveedor rechazo primero el candidato completo del core (176 rutas, 20.660 lineas) por `lens_context_budget_exceeded`, asi que se reviso por work unit. T11 quedo **aprobado** (lineage `review-9eaabdc51711bc78`, lentes de riesgo y confiabilidad). T10+T11 arrojo hallazgos CRITICOS que el padre corrigio.
+
+(b) **Hallazgo `R3-ASSIGNMENT-CASCADE-HISTORY` (CRITICAL, introducido).** Las FKs de `common_property_exclusive_use_assignments` usaban `ON DELETE CASCADE`: borrar un area comun, una unidad o el conjunto borraba en silencio el historial de las asignaciones, contradiciendo el ciclo de vida de cerrar la asignacion por estado (`ended`/`revoked`). Correccion: `ON DELETE RESTRICT` en las tres FKs (conjunto, area comun y unidad), el mismo patron que ya usa el codigo para pisos y edificios (RN-S02/RN-S04). Commit `58a59a4`.
+
+(c) **Hallazgo `R3-EXCLUSIVE-OVERLAP` (CRITICAL, introducido).** El esquema permitia varias asignaciones activas para el mismo area comun con vigencias solapadas: dos unidades podian tener a la vez el uso exclusivo del mismo bien comun. Correccion: indice unico parcial `(residential_complex_id, common_area_id) WHERE status = 'active'`; la asignacion anterior se cierra por estado antes de abrir la siguiente.
+
+(d) **Hallazgo `R3-FACILITY-HARD-DELETE` (CRITICAL, introducido).** Borrar una instalacion de parqueadero borraba en silencio sus espacios numerados. Correccion: `ON DELETE RESTRICT` en la FK de la instalacion; una instalacion con espacios se desactiva, no se borra.
+
+(e) **Hallazgo `R3-DOC-FK-MISMATCH` (informativo).** Este log describia las FKs de asignacion como `CASCADE`; corregido a `RESTRICT` en L53 y L54.
+
+(f) **Verificacion.** Suite completa **499 pruebas / 1.408 assertions** en verde contra PostgreSQL real `z360_test`; Pint limpio sobre los 218 archivos; focal de los dos archivos de pruebas: 37 pruebas / 64 assertions.
+
+(g) **Riesgo:** `Risk: none` (correccion acotada dentro del work unit, fijada por pruebas a nivel de motor).
 
 ## Delivery
 
