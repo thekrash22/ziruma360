@@ -85,12 +85,16 @@ class User extends Authenticatable
 
     /**
      * Check if user is platform admin.
+     *
+     * El rol de plataforma solo se reconoce con una membresia **activa**: una
+     * membresia suspendida o revocada no otorga poder de plataforma.
      */
     public function isPlatformAdmin(): bool
     {
-        return $this->memberships()
+        return $this->activeMemberships()
             ->whereHas('roles', function ($query) {
-                $query->where('key', 'platform_admin');
+                $query->where('key', 'platform_admin')
+                    ->whereNull('residential_complex_id');
             })
             ->exists();
     }

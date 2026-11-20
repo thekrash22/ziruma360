@@ -81,6 +81,22 @@
 
 **S37.** Suite transversal §6: pruebas en `tests/Feature/Core/` que cubren los cinco casos de §6 sobre el dominio de T7–T15, ejecutadas contra PostgreSQL en la base dedicada `z360_test`, sin migraciones nuevas y sin tocar la superficie legacy (`/units`, `/people`, `/api/v1/units`, `/api/v1/people`), que corresponde a T17.
 
+**S42.** La superficie `/api/v1/buildings` deja de ser anónima: el grupo de rutas exige sesión, cookies, CSRF y `auth`, igual que el resto de la API del dominio nuevo; una petición sin autenticar responde 401 y nunca devuelve datos del catálogo.
+
+**S43.** El listado `/api/v1/buildings` responde con los conjuntos del actor (membresías activas) y con el catálogo completo únicamente para el administrador de plataforma; no existe ninguna forma de obtener el catálogo completo sin ese rol.
+
+**S44.** El alta de conjuntos exige un permiso nuevo `complex.create`, que se otorga solo al rol de plataforma; el administrador de conjunto no crea conjuntos.
+
+**S45.** La baja de un conjunto no borra nada: `DELETE /api/v1/buildings/{uuid}` pasa el conjunto al estado `archived` (estado terminal, no escribible) y jamás ejecuta un borrado físico en cascada sobre personas, unidades, titularidades, arrendamientos ni auditoría.
+
+**S46.** El resource expone una proyección diferenciada por permiso: `settings` (configuración de gobierno: contraseña mínima, roles invitables, aviso de privacidad, plazos de retención) y `legal_identifier` solo se exponen a quien tenga `complex.manage_settings` (o a la plataforma); el resto de miembros del conjunto recibe una vista mínima.
+
+**S47.** Aislamiento entre conjuntos en toda la superficie: un conjunto que no está en el alcance del actor responde 404 (no 403), sin filtrar su existencia, en detalle, edición y baja.
+
+**S48.** La edición de un conjunto exige `complex.edit` dentro de ese conjunto, y se conservan las reglas vigentes del dominio: el `code` solo cambia en estado `draft` y un conjunto suspendido o archivado no es escribible.
+
+**S49.** Los parámetros de consulta del listado se validan contra una lista permitida: `order_by` solo acepta columnas ordenables conocidas y `per_page` un entero entre 1 y 100; un valor no permitido responde 422 en lugar de provocar un 500.
+
 ---
 
 ## Tasks
@@ -100,6 +116,7 @@
 | T14 | S20-S24 | Inline (rama `feat/employments`) | Commits `1419752` + `9da83c4` + `c5d05cb` + `4768f4e` + `2d82600` |
 | T15 | S25-S30 | Inline (rama `feat/authorizations`) | Commits `f087887` + `868b8d3` + `830a734` + `7b15508` + `a4691fd` + `6e43cb1` |
 | T16 | S31-S37 | Inline (rama `feat/core-transversal-suite`) | Commits `41d80f4` + `12d392d` + `4c1292e` + `31d8c82` + `2322632` + `f8b62bb` + `30590b4` + `61b1820` + `c3871ba` + `c6c8d22` + `957c5bd` |
+| T18 | S42-S49 | Inline (rama `feat/api-buildings-guard`, desde `stg`) | Pendiente |
 
 ---
 
@@ -119,6 +136,7 @@
 | T15 | `property_unit_authorizations` (autorizaciones de gestión) | T12 | Media | ✅ Done (specs S25-S30, rama `feat/authorizations`, revision nativa aprobada) |
 | T16 | Suite transversal §6 sobre T7–T15 (aislamiento a nivel de endpoint, alcance de propiedad, titularidad con historial y auditoría, políticas tipadas y auditadas, privacidad de portería). Sin migraciones nuevas | T7-T15 | Alta | ✅ Done (specs S31-S37, rama `feat/core-transversal-suite`, 320 pruebas / 785 assertions, revisión nativa aprobada y quemada) |
 | T17 | Retirar el modelo legacy (`unidades`, `personas`, `persona_unidad`) y migrar sus rutas web (`/units`, `/people`) y API (`/api/v1/units`, `/api/v1/people`) a `property_units` y `people` | T12 | Alta |
+| T18 | Cerrar la API de conjuntos: `auth` y alcance resuelto en servidor, permiso `complex.create`, baja por archivado y proyección de `settings`/`legal_identifier` por permiso | T12 | Alta |
 
 ---
 

@@ -4,7 +4,9 @@ namespace App\Http\Requests;
 
 use App\Enums\ResidentialComplexStatus;
 use App\Models\ResidentialComplex;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 
@@ -12,16 +14,22 @@ class UpdateResidentialComplexRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
+     *
+     * El conjunto ya viene resuelto y acotado al alcance del actor por el
+     * middleware; la escritura exige `complex.edit` sobre ese conjunto.
      */
     public function authorize(): bool
     {
-        return true;
+        $complex = $this->attributes->get('residential_complex');
+
+        return $complex instanceof ResidentialComplex
+            && Gate::allows('update', $complex);
     }
 
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {

@@ -11,38 +11,76 @@ use App\Models\ResidentialComplex;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 
+/**
+ * API de conjuntos residenciales.
+ *
+ * La superficie exige sesion y `auth`; el alcance del actor se resuelve en
+ * el servidor contra sus membresias activas y cada conjunto fuera de ese
+ * alcance responde 404. La baja archiva el conjunto: nunca borra en cascada
+ * los datos del conjunto.
+ */
 class ResidentialComplexController extends Controller
 {
+    /**
+     * Columnas por las que se puede ordenar el listado.
+     */
+    private const ORDERABLE = ['created_at', 'updated_at', 'name', 'code', 'status'];
+
     /**
      * Display a listing of buildings.
      */
     public function index(Request $request): AnonymousResourceCollection
     {
+        $user = $request->user();
+
+        abort_if($user === null, 401, 'No autenticado.');
+
+        $filters = Validator::make(
+            $request->only(['status', 'search', 'order_by', 'order_dir', 'per_page']),
+            [
+                'status' => ['sometimes', new Enum(ResidentialComplexStatus::class)],
+                'search' => ['sometimes', 'string', 'max:255'],
+                'order_by' => ['sometimes', Rule::in(self::ORDERABLE)],
+                'order_dir' => ['sometimes', Rule::in(['asc', 'desc'])],
+                'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            ]
+        )->validate();
+
         $query = ResidentialComplex::query();
 
+        if (! $user->isPlatformAdmin()) {
+            $complexIds = $user->complexes()->distinct()->pluck('residential_complexes.id');
+
+            abort_if($complexIds->isEmpty(), 403, 'No perteneces a ningún conjunto.');
+
+            $query->whereIn('id', $complexIds);
+        }
+
         // Filter by status if provided
-        if ($request->has('status')) {
-            $query->where('status', $request->input('status'));
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
         }
 
         // Search by name or code (case-insensitive)
-        if ($request->has('search')) {
-            $search = $request->input('search');
+        if (isset($filters['search'])) {
+            $search = mb_strtolower($filters['search']);
+
             $query->where(function ($q) use ($search) {
-                $q->whereRaw('lower(name) like ?', ['%' . strtolower($search) . '%'])
-                  ->orWhereRaw('lower(code) like ?', ['%' . strtolower($search) . '%']);
+                $q->whereRaw('lower(name) like ?', ['%'.$search.'%'])
+                    ->orWhereRaw('lower(code) like ?', ['%'.$search.'%']);
             });
         }
 
         // Order by
-        $orderBy = $request->input('order_by', 'created_at');
-        $orderDir = $request->input('order_dir', 'desc');
-        $query->orderBy($orderBy, $orderDir);
+        $query->orderBy($filters['order_by'] ?? 'created_at', $filters['order_dir'] ?? 'desc');
 
         // Paginate
-        $perPage = min($request->input('per_page', 15), 100);
-        $complexes = $query->paginate($perPage);
+        $complexes = $query->paginate((int) ($filters['per_page'] ?? 15));
 
         return ResidentialComplexResource::collection($complexes);
     }
@@ -70,46 +108,79 @@ class ResidentialComplexController extends Controller
     /**
      * Display the specified building.
      */
-    public function show(ResidentialComplex $building): ResidentialComplexResource
+    public function show(Request $request): ResidentialComplexResource
     {
-        return new ResidentialComplexResource($building);
+        $complex = $this->complex($request);
+
+        abort_unless(
+            Gate::allows('view', $complex),
+            403,
+            'No tienes permiso para consultar el conjunto.'
+        );
+
+        return new ResidentialComplexResource($complex);
     }
 
     /**
      * Update the specified building.
      */
-    public function update(UpdateResidentialComplexRequest $request, ResidentialComplex $building): ResidentialComplexResource
+    public function update(UpdateResidentialComplexRequest $request): ResidentialComplexResource
     {
+        $complex = $this->complex($request);
+
+        abort_unless(
+            $complex->isWritable(),
+            422,
+            'No se puede editar un conjunto suspendido o archivado.'
+        );
+
         // Check if code can be changed
-        if ($request->has('code') && !$building->canChangeCode()) {
+        if ($request->has('code') && ! $complex->canChangeCode()) {
             abort(422, 'No se puede cambiar el código de un conjunto que no está en estado borrador.');
         }
 
-        $validated = $request->validated();
-        $building->update($validated);
+        $complex->update($request->validated());
 
-        return new ResidentialComplexResource($building);
+        return new ResidentialComplexResource($complex->fresh());
     }
 
     /**
-     * Remove the specified building.
+     * Archive the specified building.
+     *
+     * La baja nunca borra: el conjunto pasa al estado terminal `archived` y
+     * sus datos (personas, unidades, titularidades, arrendamientos y
+     * auditoria) se conservan.
      */
-    public function destroy(ResidentialComplex $building): JsonResponse
+    public function destroy(Request $request): ResidentialComplexResource
     {
-        // Check if the building can be deleted
-        if (!$building->isWritable()) {
-            abort(422, 'No se puede eliminar un conjunto suspendido o archivado.');
-        }
+        $complex = $this->complex($request);
 
-        // Check for active memberships
-        if ($building->memberships()->where('status', 'active')->exists()) {
-            abort(422, 'No se puede eliminar un conjunto con membresías activas.');
-        }
+        abort_unless(
+            Gate::allows('archive', $complex),
+            403,
+            'No tienes permiso para archivar el conjunto.'
+        );
 
-        $building->delete();
+        abort_unless(
+            $complex->isWritable(),
+            422,
+            'No se puede archivar un conjunto suspendido o archivado.'
+        );
 
-        return response()->json([
-            'message' => 'Conjunto eliminado exitosamente.',
-        ]);
+        $complex->update(['status' => ResidentialComplexStatus::ARCHIVED]);
+
+        return new ResidentialComplexResource($complex->fresh());
+    }
+
+    /**
+     * Conjunto ya resuelto y verificado por el middleware.
+     */
+    private function complex(Request $request): ResidentialComplex
+    {
+        $complex = $request->attributes->get('residential_complex');
+
+        abort_if(! $complex instanceof ResidentialComplex, 404, 'Conjunto no encontrado.');
+
+        return $complex;
     }
 }

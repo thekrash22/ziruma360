@@ -9,6 +9,7 @@ namespace App\Enums;
 enum ComplexPermission: string
 {
     // Complex management
+    case COMPLEX_CREATE = 'complex.create';
     case COMPLEX_VIEW = 'complex.view';
     case COMPLEX_EDIT = 'complex.edit';
     case COMPLEX_MANAGE_MEMBERS = 'complex.manage_members';
@@ -67,6 +68,7 @@ enum ComplexPermission: string
     public function label(): string
     {
         return match ($this) {
+            self::COMPLEX_CREATE => 'Crear conjuntos',
             self::COMPLEX_VIEW => 'Ver conjunto',
             self::COMPLEX_EDIT => 'Editar conjunto',
             self::COMPLEX_MANAGE_MEMBERS => 'Gestionar miembros',
@@ -113,7 +115,7 @@ enum ComplexPermission: string
     public function category(): string
     {
         return match ($this) {
-            self::COMPLEX_VIEW, self::COMPLEX_EDIT, self::COMPLEX_MANAGE_MEMBERS,
+            self::COMPLEX_CREATE, self::COMPLEX_VIEW, self::COMPLEX_EDIT, self::COMPLEX_MANAGE_MEMBERS,
             self::COMPLEX_MANAGE_SETTINGS, self::COMPLEX_VIEW_AUDIT => 'Conjunto',
             self::BUILDING_VIEW, self::BUILDING_CREATE, self::BUILDING_EDIT, self::BUILDING_DELETE,
             self::FLOOR_VIEW, self::FLOOR_CREATE, self::FLOOR_EDIT, self::FLOOR_DELETE,
