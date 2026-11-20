@@ -27,6 +27,10 @@ use Illuminate\Support\Facades\DB;
  *     hay una asignacion vigente por bien comun, la anterior se cierra antes
  *   - trigger BEFORE DELETE que impide el borrado duro de una asignacion: el
  *     historial es inmutable y se cierra por estado, nunca se borra
+ *   - trigger BEFORE TRUNCATE que impide truncar la tabla: un TRUNCATE no
+ *     dispara los triggers de fila
+ *   - trigger BEFORE UPDATE que deja inmutables el beneficiario, la vigencia y
+ *     la referencia documental: solo se admite el cierre por estado
  */
 return new class extends Migration
 {
@@ -88,6 +92,60 @@ return new class extends Migration
             BEFORE DELETE ON common_property_exclusive_use_assignments
             FOR EACH ROW EXECUTE FUNCTION z360_forbid_exclusive_use_assignment_delete()
         SQL);
+
+        // Un TRUNCATE no dispara los triggers de fila, asi que necesita su
+        // propio trigger de sentencia para que la tabla no se pueda truncar.
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER common_property_exclusive_use_assignments_forbid_truncate
+            BEFORE TRUNCATE ON common_property_exclusive_use_assignments
+            FOR EACH STATEMENT EXECUTE FUNCTION z360_forbid_exclusive_use_assignment_delete()
+        SQL);
+
+        // El registro es inmutable: solo se admite el cierre por estado
+        // (active -> ended/revoked). Beneficiario, vigencia de inicio y
+        // referencia documental no se reescriben nunca.
+        DB::statement(<<<'SQL'
+            CREATE OR REPLACE FUNCTION z360_guard_exclusive_use_assignment_update()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.residential_complex_id IS DISTINCT FROM OLD.residential_complex_id
+                    OR NEW.common_area_id IS DISTINCT FROM OLD.common_area_id
+                    OR NEW.property_unit_id IS DISTINCT FROM OLD.property_unit_id
+                    OR NEW.valid_from IS DISTINCT FROM OLD.valid_from
+                    OR NEW.document_reference IS DISTINCT FROM OLD.document_reference THEN
+                    RAISE EXCEPTION
+                        'la asignacion de uso exclusivo es inmutable: solo se cierra por estado (ended/revoked)'
+                        USING ERRCODE = 'restrict_violation';
+                END IF;
+
+                IF NEW.status IS DISTINCT FROM OLD.status THEN
+                    IF OLD.status <> 'active' OR NEW.status NOT IN ('ended', 'revoked') THEN
+                        RAISE EXCEPTION
+                            'la asignacion solo se cierra por estado (active -> ended/revoked)'
+                            USING ERRCODE = 'restrict_violation';
+                    END IF;
+
+                    IF NEW.valid_until IS DISTINCT FROM OLD.valid_until AND NEW.valid_until IS NULL THEN
+                        RAISE EXCEPTION
+                            'al cerrar la asignacion la vigencia solo puede rellenarse, nunca borrarse'
+                            USING ERRCODE = 'restrict_violation';
+                    END IF;
+                ELSIF NEW.valid_until IS DISTINCT FROM OLD.valid_until THEN
+                    RAISE EXCEPTION
+                        'la vigencia de la asignacion solo cambia al cerrarla por estado'
+                        USING ERRCODE = 'restrict_violation';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        SQL);
+
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER common_property_exclusive_use_assignments_guard_update
+            BEFORE UPDATE ON common_property_exclusive_use_assignments
+            FOR EACH ROW EXECUTE FUNCTION z360_guard_exclusive_use_assignment_update()
+        SQL);
     }
 
     /**
@@ -97,5 +155,6 @@ return new class extends Migration
     {
         DB::statement('DROP TABLE IF EXISTS common_property_exclusive_use_assignments');
         DB::statement('DROP FUNCTION IF EXISTS z360_forbid_exclusive_use_assignment_delete()');
+        DB::statement('DROP FUNCTION IF EXISTS z360_guard_exclusive_use_assignment_update()');
     }
 };

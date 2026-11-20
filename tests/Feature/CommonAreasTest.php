@@ -505,6 +505,67 @@ class CommonAreasTest extends TestCase
         $this->assertDatabaseCount('common_property_exclusive_use_assignments', 1);
     }
 
+    public function test_the_exclusive_use_assignment_history_cannot_be_rewritten(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-15',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+        $otherUnit = $this->unit($this->complex, 'A-102');
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'document_reference' => 'ACTA-2026-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $assignment->update(['property_unit_id' => $otherUnit->id]);
+    }
+
+    public function test_a_closed_exclusive_use_assignment_cannot_be_reopened(): void
+    {
+        $area = CommonArea::create([
+            'residential_complex_id' => $this->complex->id,
+            'name' => 'Deposito comun',
+            'code' => 'DEP-COM-16',
+            'area_type' => CommonAreaType::OTHER,
+            'status' => CommonAreaStatus::ACTIVE,
+        ]);
+
+        $unit = $this->unit($this->complex);
+
+        $assignment = CommonPropertyExclusiveUseAssignment::create([
+            'residential_complex_id' => $this->complex->id,
+            'common_area_id' => $area->id,
+            'property_unit_id' => $unit->id,
+            'valid_from' => '2026-01-01',
+            'status' => ExclusiveUseAssignmentStatus::ACTIVE,
+        ]);
+
+        $assignment->update(['status' => ExclusiveUseAssignmentStatus::ENDED]);
+
+        $this->expectException(QueryException::class);
+
+        $assignment->update(['status' => ExclusiveUseAssignmentStatus::ACTIVE]);
+    }
+
+    public function test_the_exclusive_use_assignment_history_cannot_be_truncated(): void
+    {
+        $this->expectException(QueryException::class);
+
+        DB::statement('TRUNCATE common_property_exclusive_use_assignments');
+    }
+
     public function test_deleting_a_complex_removes_its_common_areas_when_there_are_no_assignments(): void
     {
         CommonArea::create([

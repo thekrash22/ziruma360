@@ -136,6 +136,45 @@ class ParkingFacilitiesTest extends TestCase
         $facility->delete();
     }
 
+    public function test_a_parking_space_cannot_be_deleted(): void
+    {
+        $facility = $this->facility($this->complex);
+
+        $space = ParkingSpace::create([
+            'residential_complex_id' => $this->complex->id,
+            'parking_facility_id' => $facility->id,
+            'number' => 'P-02',
+            'status' => ParkingSpaceStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $space->delete();
+    }
+
+    public function test_a_complex_with_parking_spaces_cannot_be_deleted(): void
+    {
+        $facility = $this->facility($this->complex);
+
+        ParkingSpace::create([
+            'residential_complex_id' => $this->complex->id,
+            'parking_facility_id' => $facility->id,
+            'number' => 'P-03',
+            'status' => ParkingSpaceStatus::ACTIVE,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $this->complex->delete();
+    }
+
+    public function test_the_parking_spaces_cannot_be_truncated(): void
+    {
+        $this->expectException(QueryException::class);
+
+        DB::statement('TRUNCATE parking_spaces');
+    }
+
     public function test_the_database_rejects_an_operational_capacity_greater_than_the_total_capacity(): void
     {
         $this->expectException(QueryException::class);
