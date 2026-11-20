@@ -1,0 +1,66 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * common_property_exclusive_use_assignments (spec §3.9 / S54).
+ *
+ * Un bien comun puede asignarse en uso exclusivo a una unidad beneficiaria.
+ * RN-S06: el bien comun asignado en uso exclusivo NO se registra como
+ * propiedad privada; la asignacion se separa de la titularidad legal, asi que
+ * esta tabla no toca `property_unit_ownerships`.
+ *
+ * Las garantias se implementan a nivel motor con SQL crudo porque el Blueprint
+ * de Laravel no soporta:
+ *   - FK compuesta (residential_complex_id, common_area_id) -> common_areas
+ *     (residential_complex_id, id)
+ *   - FK compuesta (residential_complex_id, property_unit_id) -> property_units
+ *     (residential_complex_id, id), que rechaza cruces entre conjuntos
+ *     (ACE-C02/ACE-P07)
+ *   - CHECK de vigencia (valid_until >= valid_from)
+ *   - CHECK de dominio de status
+ */
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        DB::statement(<<<'SQL'
+            CREATE TABLE common_property_exclusive_use_assignments (
+                id bigserial PRIMARY KEY,
+                residential_complex_id bigint NOT NULL REFERENCES residential_complexes(id) ON DELETE CASCADE,
+                common_area_id bigint NOT NULL,
+                property_unit_id bigint NOT NULL,
+                valid_from date NOT NULL,
+                valid_until date NULL,
+                document_reference varchar(255) NULL,
+                status varchar(255) NOT NULL DEFAULT 'active',
+                created_at timestamp(0) without time zone NULL,
+                updated_at timestamp(0) without time zone NULL,
+                CONSTRAINT common_property_exclusive_use_assignments_common_area_fk
+                    FOREIGN KEY (residential_complex_id, common_area_id)
+                    REFERENCES common_areas (residential_complex_id, id)
+                    ON DELETE CASCADE,
+                CONSTRAINT common_property_exclusive_use_assignments_property_unit_fk
+                    FOREIGN KEY (residential_complex_id, property_unit_id)
+                    REFERENCES property_units (residential_complex_id, id)
+                    ON DELETE CASCADE,
+                CONSTRAINT common_property_exclusive_use_assignments_validity_check
+                    CHECK (valid_until IS NULL OR valid_until >= valid_from),
+                CONSTRAINT common_property_exclusive_use_assignments_status_check
+                    CHECK (status IN ('active', 'ended', 'revoked'))
+            )
+        SQL);
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        DB::statement('DROP TABLE IF EXISTS common_property_exclusive_use_assignments');
+    }
+};
