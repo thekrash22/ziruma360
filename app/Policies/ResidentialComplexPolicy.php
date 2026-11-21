@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\ComplexPermission;
+use App\Enums\ResidentialComplexStatus;
 use App\Models\ResidentialComplex;
 use App\Models\User;
 use App\Services\ScopedPermission;
@@ -86,6 +87,18 @@ class ResidentialComplexPolicy
     {
         return $user->isPlatformAdmin()
             || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
+    }
+
+    /**
+     * Cambio de estado del conjunto: es un atributo de plataforma.
+     *
+     * El administrador del conjunto conserva `complex.edit` sobre el resto de
+     * los atributos, pero ese permiso no habilita suspender, activar ni
+     * reponer el conjunto (spec S65, matriz de permisos de §1.3).
+     */
+    public function changeStatus(User $user, ResidentialComplex $complex, ResidentialComplexStatus $target): bool
+    {
+        return $user->isPlatformAdmin();
     }
 
     /**

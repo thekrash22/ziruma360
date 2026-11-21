@@ -44,17 +44,20 @@ Espejo de `odd/tasks/ziruma360-core-admin.md`. Fuente de verdad: el feature doc.
 - Commit: 6d66975 + 75f5085
 
 ## T9: property_unit_relations (anexos, parqueaderos)
-- Status: pending
+- Status: done
+- Commit: 1c9e0e8 (PR #19 mergeado a `stg`)
 - Dependencias: T8
 - Prioridad: Media
 
 ## T10: common_areas + common_property_exclusive_use_assignments
-- Status: pending
+- Status: done
+- Commit: d09f1d1 (PR #19 mergeado a `stg`)
 - Dependencias: T7
 - Prioridad: Media
 
 ## T11: parking_facilities + parking_spaces
-- Status: pending
+- Status: done
+- Commit: a491549 (PR #19 mergeado a `stg`)
 - Dependencias: T7
 - Prioridad: Media
 
@@ -203,6 +206,25 @@ FK compuestas de mismo conjunto, CHECKs de dominio y vigencia, y `ON DELETE NO A
 
 - Ronda nativa de T19 (L65): lineage review-23737772ba0b33bd, tier medio, lentes review-risk y review-reliability, 4 rutas y 187 lineas. Los dos reviewers corrieron (minimax/MiniMax-M2.7) y la ronda quedo escalada y detenida (native_stop_required, estado escalated, sin reintento automatico) por el hallazgo R3-NO-CONTEXT-CROSS-COMPLEX-VISIBILITY con causalidad unknown_causality: sin conjunto resuelto el ambito global de BelongsToComplex no filtra nada y una peticion sin contexto ve los datos de todos los conjuntos. Es el hallazgo H1 que el verificador independiente ya habia detectado (L64(e)) como preexistente, con sonda diferencial de comportamiento identico contra el codigo previo 70c025e: T19 no lo introduce. No se corrige en T19 porque cambiarlo altera el comportamiento observable de rutas no nombradas por este work unit y tiene impacto en consola, seeders y jobs, que hoy consultan sin filtro; queda como work unit propio con decision de producto. El lineage queda escalated y terminal: liberar la autoridad o desactivar el switch de revision del clon es decision del mantenedor. T19 conserva su verificacion propia (suite 518/1.438 y verificador independiente PASS en S58-S61).
 
+## T20: Privilegios y estados del conjunto
+- Status: closed (suite 539/1.503 en PostgreSQL real; verificacion independiente PASS en 6/6 puntos con mutation testing; **ronda nativa APROBADA y autoridad quemada** en `review-b53a16e08ca9e10d`)
+- Specs: S65, S66, S67, S68
+- Dependencias: T18
+- Prioridad: Alta
+- Rama: `feat/complex-status-privileges` (desde `stg`)
+- Alcance: (1) el estado del conjunto por API es de plataforma (`PATCH status=...` exige rol de plataforma; el `complex_admin` conserva `complex.edit` sobre el resto de los atributos); (2) la baja conserva su puerta propia (`DELETE` con `complex.edit`, decision de producto de L43) y `archived` es terminal; (3) tabla de transiciones validas (`draft -> active`, `active -> suspended`, `suspended -> active`) con 422 y mensaje claro para el resto; (4) precondiciones de activacion de ACE-C03 (administrador vigente, al menos un edificio o unidad, politicas minimas completas) con 422 y la lista de lo que falta
+- Defecto que corrige: `UpdateResidentialComplexRequest.php:70` valida `status` contra el enum completo y `ResidentialComplexPolicy::update()` autoriza con `complex.edit`, que `complex_admin` tiene sembrado: el administrador de conjunto podia suspender su propio conjunto (reservado a la plataforma por la matriz de §1.3) y dejarlo irrecuperable por API
+- Decision del usuario: "T20 Privilegios y estados del conjunto" (frontera) y "Enmendar el spec" para §6 (la suite es PHPUnit con runner Pest)
+- Riesgo: item 2 (privilegios) y item 3 (contrato del endpoint de conjuntos) -> verificacion independiente obligatoria
+- Commits: `b224eab` (alcance documental: specs S65-S68 + Log L67) + `f085f79` (implementacion) + `5501cf6` (correccion del no-op sobre conjuntos no escribibles) + `24619c1` (correccion del CRITICAL nativo de la escritura mixta) + commit documental de cierre
+- Slice: 9 rutas y 624 lineas contra `stg` (`dfa7a240`); entrega en PR propio con base `stg`: `https://github.com/thekrash22/ziruma360/pull/new/feat/complex-status-privileges`
+- Implementacion: `canTransitionTo()` (tabla `draft -> active`, `active -> suspended`, `suspended -> active`; `archived` sin salida), `changeStatus()` (solo plataforma), guarda de estado en `UpdateResidentialComplexRequest::authorize()` con `tryFrom` (422, nunca 500), `activationBlockers()` en el modelo (administrador vigente, estructura fisica y los cinco grupos de politica no vacios) y `update()` con el orden *conjunto no escribible -> transicion -> precondiciones -> `code`*
+- Correcciones del padre: el alta ya no acepta `status` (422 en espanol, el conjunto nace en `draft` segun el paso 1 del asistente) y un grupo de politica vacio no cuenta como definido. RED observado (2 failed / 63 passed) y GREEN (65 / 168)
+- Verificacion independiente (`gentle-ai-verify`, 6 puntos): **PASS en los 6**, con 25 sondas HTTP/SQL propias (25 passed / 128 assertions), 0 residuos en `z360_test`, y mutation testing que rompe pruebas concretas al quitar el filtro de vigencia `membership_roles.valid_until` (`test_activating_requires_a_current_administrator_assignment`) y al hacer que `changeStatus()` devuelva siempre `true` (`test_complex_admin_cannot_change_the_status_of_the_complex`). Hallazgo no bloqueante NB-1 (un no-op de estado sobre un conjunto no escribible respondia 200) corregido en `5501cf6`: un conjunto no escribible no admite ninguna escritura, ni siquiera un no-op. Se agregaron tres regresiones de caracterizacion (auditoria del cambio de estado, filtro por `status` del listado y 404 en un conjunto ajeno)
+- Ronda nativa: **APROBADA** en `review-b53a16e08ca9e10d` (tier medio, lentes `review-risk` + `review-reliability`, presupuesto 200, candidato = las 9 rutas de T20 ya corregidas, arbol `a4d48e86`); los dos revisores corrieron (riesgo 32,5 s, fiabilidad 15,0 s) y el reconocimiento exacto quemo la autoridad (`gentle-ai.review-acknowledged/v1`, `delivery: ordinary-repository-policy`); STATUS final `target_already_acknowledged` (terminal)
+- Hallazgo de la ronda 1 (`review-19828ac61a283cbd`, que quedo en `correction_required` sin autoridad quemada): CRITICAL `R3-suspended-reactivation-mixed-write` — una reactivacion por plataforma podia arrastrar otros atributos (un `PATCH {status: active, name: ...}` sobre un conjunto suspendido persistia el `name`). Corregido en `24619c1`: `isOnlyStatusChange()` exige que el payload proponga un estado nuevo y ningun otro atributo (42 lineas de diff, RED observado y GREEN). El slot del plan de correccion resulto indespachable desde este host (`capture-route-registration-rejected / selector-mismatch`, el defecto ya registrado en L10/L15/L45/L49/L53), asi que la ronda se reabrio sobre el codigo ya corregido (precedente de L53)
+- Desbloqueo del host: los lentes de revision no tenian modelo asignado en el enrutamiento global porque la sesion corre en home aislado (`install/home/.gentle-shell/agent`), sin store de modelos ni `subagents.json`, y con assets gestionados sin campo `model:`. Se configuraron todas las ubicaciones escribibles del gentle profile y el usuario asigno la entrada del store del prefijo (`install/config/models.json`), que el harness protege
+- Deuda: los lentes de revision nativa no tienen modelo configurado en el host; el `/docs` con el spec del core sigue sin versionar (el enmiendo de §6 es local); la matriz de §1.3 conserva seis celdas sin respaldo y `platform_admin` con permisos de mas (work unit T21)
 ## T21: Matriz §1.3 completa
 - Status: closed (suite 531/1.463 en PostgreSQL real; verificacion independiente PASS en 8/8 puntos con mutation testing; **ronda nativa APROBADA y autoridad quemada** en `review-a6279ba9f46fdb9e`)
 - Specs: S69, S70, S71, S72
