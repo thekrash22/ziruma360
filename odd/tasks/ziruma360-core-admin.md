@@ -149,7 +149,7 @@
 
 **S75.** Ciclo de vida de la membresia, con transiciones validas y 422 con mensaje en el resto: `invited -> active` (la acepta el propio invitado, o la activa el administrador con `complex.manage_members`; fija `joined_at`), `active -> suspended` (administrador) y `active|suspended -> revoked` (administrador; terminal, sin vuelta a `active`). Una membresia suspendida o revocada **pierde el acceso de inmediato**, porque la resolucion de permisos y el contexto de conjunto ya filtran por `status = 'active'`.
 
-**S76.** Asignacion de roles: `PUT /api/v1/core/members/{membership}/roles` reemplaza el conjunto de roles de la membresia, con `valid_from` y `valid_until` opcionales por rol. Solo roles del catalogo (de sistema o del propio conjunto): un rol de otro conjunto se rechaza con 422. Un `valid_until` ya vencido no concede permisos, que es la semantica de vigencia que ya viven en `PermissionService` y en las policies.
+**S76.** Asignacion de roles: `PUT /api/v1/core/members/{membership}/roles` reemplaza el conjunto de roles de la membresia, con `valid_from` y `valid_until` opcionales por rol. Solo roles del catalogo (de sistema o del propio conjunto): un rol de otro conjunto se rechaza con 422. Un `valid_until` ya vencido no concede permisos: es la semantica de vigencia que vive en `ScopedPermission` (la misma que aplican las policies del conjunto). `PermissionService` todavia no la aplica y queda como deuda registrada.
 
 **S77.** La escritura exige `complex.manage_members` **dentro del conjunto**: un miembro sin ese permiso recibe 403 y un conjunto fuera del alcance responde 404. La aceptacion de la propia invitacion no exige ese permiso: la hace el invitado.
 

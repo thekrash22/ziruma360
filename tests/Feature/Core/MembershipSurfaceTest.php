@@ -311,6 +311,22 @@ class MembershipSurfaceTest extends CoreTestCase
         $this->assertNotNull($membership->fresh()->joined_at);
     }
 
+    public function test_a_third_party_cannot_activate_the_invitation_of_another_member(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$resident] = $this->makeMember($complex, SystemRole::RESIDENT);
+        [, $membership] = $this->makeInvitedMembership($complex);
+
+        // La aceptacion la hace el propio invitado o un administrador con
+        // `complex.manage_members`: un tercero sin ese permiso no puede.
+        $this->actingAs($resident)
+            ->postJson("/api/v1/core/members/{$membership->id}/activate")
+            ->assertForbidden();
+
+        $this->assertSame(MembershipStatus::INVITED, $membership->fresh()->status);
+    }
+
     public function test_activating_a_membership_that_is_not_invited_is_rejected(): void
     {
         $complex = $this->makeComplex('Torres');
