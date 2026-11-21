@@ -26,6 +26,9 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
-/docs
+# El spec del core se versiona en docs/: es el contrato que citan los work
+# units (odd/tasks/ziruma360-core-admin.md), asi que no debe volver a ignorarse.
+/docs/*
+!/docs/Ziruma360_Core_Administracion_Conjunto.md
 # Estado local de Engram
 .engram/
