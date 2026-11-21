@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Enums\ComplexPermission;
 use App\Models\ResidentialComplex;
 use App\Models\User;
+use App\Services\ScopedPermission;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -129,26 +130,6 @@ class ResidentialComplexPolicy
      */
     private function scopedPermission(User $user, ResidentialComplex $complex, ComplexPermission $permission): bool
     {
-        $membership = $user->memberships()
-            ->where('residential_complex_id', $complex->id)
-            ->where('status', 'active')
-            ->first();
-
-        if (! $membership) {
-            return false;
-        }
-
-        return $membership->roles()
-            ->where(fn (Builder $query) => $query
-                ->whereNull('roles.residential_complex_id')
-                ->orWhere('roles.residential_complex_id', $complex->id))
-            ->where(fn (Builder $query) => $query
-                ->whereNull('membership_roles.valid_from')
-                ->orWhere('membership_roles.valid_from', '<=', now()))
-            ->where(fn (Builder $query) => $query
-                ->whereNull('membership_roles.valid_until')
-                ->orWhere('membership_roles.valid_until', '>=', now()))
-            ->whereHas('permissions', fn (Builder $query) => $query->where('permission_key', $permission->value))
-            ->exists();
+        return ScopedPermission::has($user, (int) $complex->id, $permission);
     }
 }

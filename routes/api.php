@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Core\ComplexSettingsController;
+use App\Http\Controllers\Api\Core\MembershipController;
 use App\Http\Controllers\Api\Core\OwnershipController;
 use App\Http\Controllers\Api\Core\PersonController;
 use App\Http\Controllers\Api\Core\PropertyUnitController;
@@ -172,4 +173,50 @@ Route::prefix('v1/core')
 
         Route::patch('complex/settings', [ComplexSettingsController::class, 'update'])
             ->name('api.core.settings.update');
+
+        // Membresias del conjunto (S73-S77).
+        Route::get('members', [MembershipController::class, 'index'])
+            ->name('api.core.members.index');
+
+        Route::post('members', [MembershipController::class, 'store'])
+            ->name('api.core.members.store');
+
+        Route::post('members/{membership}/suspend', [MembershipController::class, 'suspend'])
+            ->whereNumber('membership')
+            ->name('api.core.members.suspend');
+
+        Route::post('members/{membership}/revoke', [MembershipController::class, 'revoke'])
+            ->whereNumber('membership')
+            ->name('api.core.members.revoke');
+
+        Route::put('members/{membership}/roles', [MembershipController::class, 'roles'])
+            ->whereNumber('membership')
+            ->name('api.core.members.roles');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Core API - aceptacion de la invitacion
+|--------------------------------------------------------------------------
+|
+| La aceptacion de la propia invitacion la hace el invitado (S77), que
+| todavia NO tiene una membresia activa: el middleware `ResolveActiveComplex`
+| (que deduce el conjunto de las membresias activas del actor) le negaria el
+| contexto. Por eso esta ruta no lo lleva: el conjunto lo da la propia
+| invitacion, y una invitacion de otro conjunto responde 404.
+|
+*/
+
+Route::prefix('v1/core')
+    ->middleware([
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ValidateCsrfToken::class,
+        'auth',
+    ])
+    ->group(function (): void {
+        Route::post('members/{membership}/activate', [MembershipController::class, 'activate'])
+            ->whereNumber('membership')
+            ->name('api.core.members.activate');
     });
