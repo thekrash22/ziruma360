@@ -3,12 +3,22 @@
 namespace App\Models;
 
 use App\Enums\MembershipStatus;
+use App\Policies\MembershipPolicy;
+use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Membresia de una cuenta en un conjunto (specs S73-S77).
+ *
+ * La policy vive en `App\Policies\MembershipPolicy` y se declara aqui de
+ * forma explicita: el nombre de la clase no sigue la convencion de
+ * descubrimiento automatico del framework.
+ */
+#[UsePolicy(MembershipPolicy::class)]
 class ResidentialComplexMembership extends Model
 {
     use HasFactory;
@@ -101,11 +111,19 @@ class ResidentialComplexMembership extends Model
         return $this->belongsTo(User::class, 'invited_by');
     }
 
+    /**
+     * Los roles asignados a la membresia, con su vigencia.
+     *
+     * El orden es el de la vigencia: primero las asignaciones con una
+     * ventana explicita (de la mas antigua a la mas reciente) y despues las
+     * perpetuas, que no caducan.
+     */
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'membership_roles', 'membership_id')
             ->withPivot('valid_from', 'valid_until')
-            ->withTimestamps();
+            ->withTimestamps()
+            ->orderByRaw('membership_roles.valid_from asc nulls last');
     }
 
     public function membershipRoles(): HasMany
