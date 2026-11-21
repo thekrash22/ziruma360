@@ -2,13 +2,11 @@
 
 namespace App\Http\Requests;
 
-use App\Enums\ResidentialComplexStatus;
 use App\Models\ResidentialComplex;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Enum;
 
 class StoreResidentialComplexRequest extends FormRequest
 {
@@ -39,7 +37,9 @@ class StoreResidentialComplexRequest extends FormRequest
             'country_code' => ['sometimes', 'string', 'size:2', 'uppercase'],
             'timezone' => ['sometimes', 'string', 'max:50'],
             'currency_code' => ['sometimes', 'string', 'size:3', 'uppercase'],
-            'status' => ['sometimes', new Enum(ResidentialComplexStatus::class)],
+            // El conjunto nace siempre en borrador (spec §2, paso 1): se
+            // activa despues de configurarlo, con sus precondiciones.
+            'status' => ['prohibited'],
             'settings' => ['sometimes', 'array'],
             'settings.*' => ['nullable'],
         ];
@@ -58,6 +58,7 @@ class StoreResidentialComplexRequest extends FormRequest
             'code.unique' => 'Este código ya está en uso.',
             'address.required' => 'La dirección es requerida.',
             'city.required' => 'La ciudad es requerida.',
+            'status.prohibited' => 'Un conjunto se crea siempre en estado borrador; la activación se hace después de configurarlo.',
         ];
     }
 }
