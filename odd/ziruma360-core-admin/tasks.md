@@ -219,8 +219,8 @@ FK compuestas de mismo conjunto, CHECKs de dominio y vigencia, y `ON DELETE NO A
 - Deuda: las claves de los dominios sin superficie son de T23; `complex.manage_members` y `complex.view_audit` siguen sembrados sin puerta de entrada (T22); la columna de la plataforma en §1.3 no desglosa los permisos de plataforma; `/docs` sigue sin versionar; al mergear el PR de T20 hay que resolver el conflicto de los dos documentos (precedente L50)
 
 ## T22: Membresias, roles y auditoria
-- Estado: abierta, en tres subunits
-- T22a: superficie de membresias del conjunto (`/api/v1/core/members`): listar, invitar, aceptar, suspender, revocar y asignar roles. Specs S73-S78. Rama `feat/memberships-surface`, **encadenada sobre `feat/permission-matrix`**
+- Estado: T22a cerrada; T22b y T22c pendientes
+- T22a: superficie de membresias del conjunto (`/api/v1/core/members`): listar, invitar, aceptar, suspender, revocar y asignar roles. Specs S73-S78. Rama `feat/memberships-surface`, **encadenada sobre `feat/permission-matrix`**. Commits: `75131bd` (alcance) + `c811488` (superficie) + `94d9e18` (extraccion de `ScopedPermission`) + `7fda3a6` (prueba del hueco de cobertura). Suite **561/1.556**. Verificacion independiente **PASS en 9/9** (perdida de acceso inmediato por HTTP real, invitacion sin duplicar, reemplazo atomico, diferencial identico contra la base, mutation testing). Ronda nativa **APROBADA y autoridad quemada** en `review-be2fd9644104f15d`. Deuda: la invitacion no es atomica (`R3-ATOMIC-INVITE`, informativo del proveedor) y el caso concurrente responde 500 en vez de 422; `PermissionService::has` sigue concediendo con rol vencido (preexistente de T18)
 - T22b: roles propios del conjunto (RN-C03): crear y editar roles con permisos del catalogo
 - T22c: consulta de auditoria (`complex.view_audit`) y extension del trait `Auditable` a los dominios que faltan (§1.6)
 - Prioridad: Alta
