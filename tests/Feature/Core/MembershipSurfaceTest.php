@@ -10,6 +10,8 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use RuntimeException;
 
 /**
  * Superficie de membresias del conjunto (specs S73-S78).
@@ -258,6 +260,109 @@ class MembershipSurfaceTest extends CoreTestCase
             ])
             ->assertStatus(422)
             ->assertJsonPath('message', 'Esta cuenta ya tiene una membresía en el conjunto.');
+    }
+
+    public function test_the_invitation_is_atomic_when_the_membership_cannot_be_created(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $person = $this->makePersonWithDocument($complex);
+        $account = User::factory()->create(['email' => self::INVITEE_EMAIL]);
+
+        // El alta de la membresia falla: la vinculacion de la persona tiene
+        // que revertirse con ella (S81).
+        $this->onCreatingMembership(function (): void {
+            throw new RuntimeException('No se pudo crear la membresía.');
+        });
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/core/members', [
+                'document_type' => self::DOCUMENT_TYPE,
+                'document_number' => self::DOCUMENT_NUMBER,
+                'email' => self::INVITEE_EMAIL,
+            ])
+            ->assertStatus(500);
+
+        // La persona conserva el `user_id` que tenia: en este caso, ninguno.
+        $this->assertNull($person->fresh()->user_id);
+
+        $this->assertSame(0, ResidentialComplexMembership::query()
+            ->where('residential_complex_id', $complex->id)
+            ->where('user_id', $account->id)
+            ->count());
+    }
+
+    public function test_the_invitation_keeps_the_previous_account_of_the_person_when_the_membership_fails(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $account = User::factory()->create(['email' => self::INVITEE_EMAIL]);
+        $person = $this->makePersonWithDocument($complex);
+        $person->update(['user_id' => $account->id]);
+
+        $this->onCreatingMembership(function (): void {
+            throw new RuntimeException('No se pudo crear la membresía.');
+        });
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/core/members', [
+                'document_type' => self::DOCUMENT_TYPE,
+                'document_number' => self::DOCUMENT_NUMBER,
+                'email' => self::INVITEE_EMAIL,
+            ])
+            ->assertStatus(500);
+
+        // La persona conserva la cuenta que tenia.
+        $this->assertSame($account->id, $person->fresh()->user_id);
+
+        $this->assertSame(0, ResidentialComplexMembership::query()
+            ->where('residential_complex_id', $complex->id)
+            ->where('user_id', $account->id)
+            ->count());
+    }
+
+    public function test_the_invitation_of_a_duplicated_membership_is_rejected_with_422(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+        $person = $this->makePersonWithDocument($complex);
+        $account = User::factory()->create(['email' => self::INVITEE_EMAIL]);
+
+        // La carrera: entre la comprobacion y el insert entra otra membresia
+        // del mismo par, y el UNIQUE(residential_complex_id, user_id) rechaza
+        // el insert. La respuesta es 422, nunca 500 (S81).
+        $this->onCreatingMembership(function (ResidentialComplexMembership $membership): void {
+            DB::table('residential_complex_memberships')->insert([
+                'residential_complex_id' => $membership->residential_complex_id,
+                'user_id' => $membership->user_id,
+                'status' => MembershipStatus::INVITED->value,
+                'invited_by' => $membership->invited_by,
+                'invited_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/core/members', [
+                'document_type' => self::DOCUMENT_TYPE,
+                'document_number' => self::DOCUMENT_NUMBER,
+                'email' => self::INVITEE_EMAIL,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Esta cuenta ya tiene una membresía en el conjunto.');
+
+        // La persona no queda vinculada sin membresia y no queda una segunda
+        // membresia del mismo par.
+        $this->assertNull($person->fresh()->user_id);
+
+        $this->assertSame(0, ResidentialComplexMembership::query()
+            ->where('residential_complex_id', $complex->id)
+            ->where('user_id', $account->id)
+            ->count());
     }
 
     public function test_a_member_without_the_permission_cannot_invite(): void
@@ -667,6 +772,21 @@ class MembershipSurfaceTest extends CoreTestCase
             ->forComplex($complex)
             ->withDocument(self::DOCUMENT_TYPE, $number)
             ->create(['user_id' => null]);
+    }
+
+    /**
+     * Escucha el alta de una membresia, para simular el fallo del insert.
+     *
+     * La escucha se retira al terminar la prueba, para no afectar a las
+     * demas.
+     */
+    private function onCreatingMembership(callable $listener): void
+    {
+        $event = 'eloquent.creating: '.ResidentialComplexMembership::class;
+
+        Event::listen($event, $listener);
+
+        $this->beforeApplicationDestroyed(fn () => Event::forget($event));
     }
 
     /**

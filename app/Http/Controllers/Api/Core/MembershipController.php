@@ -8,9 +8,11 @@ use App\Http\Requests\Core\UpdateMembershipRolesRequest;
 use App\Http\Resources\MembershipResource;
 use App\Models\ResidentialComplexMembership;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -50,13 +52,19 @@ class MembershipController extends CoreController
     }
 
     /**
-     * Invitacion de una persona del conjunto (S74).
+     * Invitacion de una persona del conjunto (S74, S81).
      *
      * La persona se localiza por su documento dentro del conjunto y se
      * reutiliza si ya existe (RN-P02); la cuenta, por su correo. Si la
      * persona no tiene cuenta, se vincula a la cuenta invitada sin duplicar
      * ni una persona ni una cuenta (ACE-P03). La membresia nace en estado
      * `invited` con su traza de invitacion.
+     *
+     * La vinculacion y el alta van en la **misma transaccion**: si el alta
+     * falla, la vinculacion se revierte y no queda una persona vinculada sin
+     * su membresia. La violacion de `UNIQUE(residential_complex_id, user_id)`
+     * (la carrera entre dos invitaciones del mismo par) se traduce a un 422
+     * con un mensaje claro, nunca a un 500.
      */
     public function store(StoreMembershipRequest $request): JsonResponse
     {
@@ -66,22 +74,50 @@ class MembershipController extends CoreController
         $account = $request->account();
         $person = $request->person();
 
-        // La persona sin cuenta se vincula a la cuenta invitada (ACE-P03):
-        // no se crea una persona nueva ni una cuenta nueva.
-        if ($person !== null && $person->user_id === null) {
-            $person->user_id = $account->id;
-            $person->save();
+        try {
+            $membership = DB::transaction(function () use ($request, $complexId, $account, $person) {
+                // La persona sin cuenta se vincula a la cuenta invitada
+                // (ACE-P03): no se crea una persona nueva ni una cuenta
+                // nueva.
+                if ($person !== null && $person->user_id === null) {
+                    $person->user_id = $account->id;
+                    $person->save();
+                }
+
+                $membership = new ResidentialComplexMembership;
+                $membership->residential_complex_id = $complexId;
+                $membership->user_id = $account->id;
+                $membership->status = MembershipStatus::INVITED;
+                $membership->invited_by = $request->user()->id;
+                $membership->invited_at = now();
+                $membership->save();
+
+                return $membership;
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isDuplicatedMembership($exception)) {
+                throw $exception;
+            }
+
+            abort(422, 'Esta cuenta ya tiene una membresía en el conjunto.');
         }
 
-        $membership = new ResidentialComplexMembership;
-        $membership->residential_complex_id = $complexId;
-        $membership->user_id = $account->id;
-        $membership->status = MembershipStatus::INVITED;
-        $membership->invited_by = $request->user()->id;
-        $membership->invited_at = now();
-        $membership->save();
-
         return $this->present($membership)->response()->setStatusCode(201);
+    }
+
+    /**
+     * El error es la violacion de `UNIQUE(residential_complex_id, user_id)`.
+     *
+     * PostgreSQL responde con el SQLSTATE 23505 (violacion de unicidad) y
+     * MySQL con el 23000; en ambos casos el mensaje nombra la tabla.
+     */
+    protected function isDuplicatedMembership(QueryException $exception): bool
+    {
+        if (! in_array((string) $exception->getCode(), ['23505', '23000'], true)) {
+            return false;
+        }
+
+        return str_contains($exception->getMessage(), 'residential_complex_memberships');
     }
 
     /**
