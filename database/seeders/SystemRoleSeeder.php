@@ -48,12 +48,13 @@ class SystemRoleSeeder extends Seeder
     {
         return [
             SystemRole::PLATFORM_ADMIN->value => [
-                // Full access
+                // Alcance global: la plataforma administra conjuntos de
+                // terceros. Ese alcance lo dan las policies
+                // (`isPlatformAdmin()`), no el permiso sembrado: por eso la
+                // matriz de §1.3 le marca "—" en la edicion, en la
+                // configuracion y en los miembros del conjunto.
                 ComplexPermission::COMPLEX_CREATE,
                 ComplexPermission::COMPLEX_VIEW,
-                ComplexPermission::COMPLEX_EDIT,
-                ComplexPermission::COMPLEX_MANAGE_MEMBERS,
-                ComplexPermission::COMPLEX_MANAGE_SETTINGS,
                 ComplexPermission::COMPLEX_VIEW_AUDIT,
                 ComplexPermission::BUILDING_VIEW,
                 ComplexPermission::BUILDING_CREATE,
@@ -134,6 +135,10 @@ class SystemRoleSeeder extends Seeder
                 ComplexPermission::ACCESS_REGISTER,
                 ComplexPermission::ACCESS_VIEW,
                 ComplexPermission::STAY_CHECKIN,
+                // Consultar estructura fisica: P (solo recursos asignados).
+                ComplexPermission::BUILDING_VIEW,
+                ComplexPermission::FLOOR_VIEW,
+                ComplexPermission::UNIT_VIEW,
             ],
 
             SystemRole::OWNER->value => [
@@ -144,6 +149,8 @@ class SystemRoleSeeder extends Seeder
                 ComplexPermission::UNIT_MANAGE,
                 ComplexPermission::PERSON_VIEW,
                 ComplexPermission::OCCUPANCY_VIEW,
+                // Gestionar ocupantes de su unidad: P.
+                ComplexPermission::OCCUPANCY_MANAGE,
                 ComplexPermission::EMPLOYMENT_VIEW,
                 ComplexPermission::EMPLOYMENT_MANAGE_UNIT,
                 ComplexPermission::STAY_VIEW,
@@ -157,6 +164,8 @@ class SystemRoleSeeder extends Seeder
                 ComplexPermission::BUILDING_VIEW,
                 ComplexPermission::FLOOR_VIEW,
                 ComplexPermission::UNIT_VIEW,
+                // Segun sus derechos: el copropietario gestiona sus inmuebles.
+                ComplexPermission::UNIT_MANAGE,
                 ComplexPermission::PERSON_VIEW,
                 ComplexPermission::OCCUPANCY_VIEW,
                 ComplexPermission::ACCESS_VIEW,
@@ -168,6 +177,12 @@ class SystemRoleSeeder extends Seeder
                 ComplexPermission::FLOOR_VIEW,
                 ComplexPermission::UNIT_VIEW,
                 ComplexPermission::PERSON_VIEW,
+                // Gestionar ocupantes de su unidad: P (segun rol) y empleados
+                // de su unidad: P (si delega).
+                ComplexPermission::OCCUPANCY_VIEW,
+                ComplexPermission::OCCUPANCY_MANAGE,
+                ComplexPermission::EMPLOYMENT_VIEW,
+                ComplexPermission::EMPLOYMENT_MANAGE_UNIT,
                 ComplexPermission::ACCESS_VIEW,
             ],
 
@@ -177,11 +192,16 @@ class SystemRoleSeeder extends Seeder
                 ComplexPermission::FLOOR_VIEW,
                 ComplexPermission::UNIT_VIEW,
                 ComplexPermission::PERSON_VIEW,
-                ComplexPermission::ACCESS_VIEW,
+                // Segun contrato y delegacion del propietario: los ocupantes
+                // y los empleados de su unidad.
+                ComplexPermission::OCCUPANCY_VIEW,
+                ComplexPermission::OCCUPANCY_MANAGE,
                 ComplexPermission::EMPLOYMENT_VIEW,
+                ComplexPermission::EMPLOYMENT_MANAGE_UNIT,
                 ComplexPermission::STAY_VIEW,
                 ComplexPermission::STAY_CREATE,
                 ComplexPermission::STAY_MANAGE,
+                ComplexPermission::ACCESS_VIEW,
             ],
 
             SystemRole::HOST->value => [

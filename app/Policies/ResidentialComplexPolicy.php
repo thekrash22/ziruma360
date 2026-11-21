@@ -6,6 +6,7 @@ use App\Enums\ComplexPermission;
 use App\Enums\ResidentialComplexStatus;
 use App\Models\ResidentialComplex;
 use App\Models\User;
+use App\Services\ScopedPermission;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -22,14 +23,28 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class ResidentialComplexPolicy
 {
+    /**
+     * Lectura de las politicas del conjunto.
+     *
+     * El alcance global de la plataforma no depende del permiso sembrado
+     * (spec S70): lo dan las policies, igual que en `viewGovernance`.
+     */
     public function viewSettings(User $user, ResidentialComplex $complex): bool
     {
-        return $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_VIEW);
+        return $user->isPlatformAdmin()
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_VIEW);
     }
 
+    /**
+     * Escritura de las politicas del conjunto.
+     *
+     * El alcance global de la plataforma no depende del permiso sembrado
+     * (spec S70): lo dan las policies, igual que en `updateGovernance`.
+     */
     public function updateSettings(User $user, ResidentialComplex $complex): bool
     {
-        return $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
+        return $user->isPlatformAdmin()
+            || $this->scopedPermission($user, $complex, ComplexPermission::COMPLEX_MANAGE_SETTINGS);
     }
 
     /**
@@ -128,26 +143,6 @@ class ResidentialComplexPolicy
      */
     private function scopedPermission(User $user, ResidentialComplex $complex, ComplexPermission $permission): bool
     {
-        $membership = $user->memberships()
-            ->where('residential_complex_id', $complex->id)
-            ->where('status', 'active')
-            ->first();
-
-        if (! $membership) {
-            return false;
-        }
-
-        return $membership->roles()
-            ->where(fn (Builder $query) => $query
-                ->whereNull('roles.residential_complex_id')
-                ->orWhere('roles.residential_complex_id', $complex->id))
-            ->where(fn (Builder $query) => $query
-                ->whereNull('membership_roles.valid_from')
-                ->orWhere('membership_roles.valid_from', '<=', now()))
-            ->where(fn (Builder $query) => $query
-                ->whereNull('membership_roles.valid_until')
-                ->orWhere('membership_roles.valid_until', '>=', now()))
-            ->whereHas('permissions', fn (Builder $query) => $query->where('permission_key', $permission->value))
-            ->exists();
+        return ScopedPermission::has($user, (int) $complex->id, $permission);
     }
 }

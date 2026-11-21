@@ -2,7 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MembershipStatus;
 use App\Enums\SystemRole;
+use App\Models\ResidentialComplex;
+use App\Models\ResidentialComplexMembership;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -127,10 +132,16 @@ class LegacySchemaContractTest extends CoreTestCase
     public function test_the_units_page_is_forbidden_for_an_actor_without_permissions(): void
     {
         $complex = $this->makeComplex('Torres');
-        // El portero no tiene permiso de unidades.
-        [$doorman] = $this->makeMember($complex, SystemRole::DOORMAN);
+        // Desde la matriz de §1.3 (S69) todos los roles del catalogo de
+        // sistema tienen permiso de unidades: el actor sin permisos es un
+        // miembro con un rol propio sin permisos sembrados.
+        [$user, $role] = $this->makeMemberWithoutUnitPermissions($complex);
 
-        $this->actingAs($doorman)
+        // El fixture tiene que ser genuinamente sin permisos: si una siembra
+        // futura le concediera alguno, el test debe fallar de forma clara.
+        $this->assertSame(0, $role->permissions()->count());
+
+        $this->actingAs($user)
             ->get('/units')
             ->assertForbidden();
     }
@@ -144,5 +155,33 @@ class LegacySchemaContractTest extends CoreTestCase
         $this->actingAs($host)
             ->get('/people')
             ->assertForbidden();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Miembro activo con un rol propio sin permisos sembrados.
+     *
+     * @return array{0: User, 1: Role}
+     */
+    private function makeMemberWithoutUnitPermissions(ResidentialComplex $complex): array
+    {
+        $user = User::factory()->create();
+
+        $membership = ResidentialComplexMembership::factory()->create([
+            'user_id' => $user->id,
+            'residential_complex_id' => $complex->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        $role = Role::factory()->complexLevel($complex)->create();
+
+        $membership->roles()->attach($role->id);
+
+        return [$user, $role];
     }
 }
