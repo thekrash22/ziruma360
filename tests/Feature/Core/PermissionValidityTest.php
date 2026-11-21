@@ -59,6 +59,44 @@ class PermissionValidityTest extends CoreTestCase
             ->assertForbidden();
     }
 
+    public function test_an_expired_role_assignment_does_not_grant_access_to_the_web_surfaces(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$member, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        // El rol de administrador se asigna con una vigencia ya vencida.
+        $this->assignRole($membership, SystemRole::COMPLEX_ADMIN, [
+            'valid_from' => now()->subDays(10),
+            'valid_until' => now()->subDay(),
+        ]);
+
+        // La web resuelve los permisos por el mismo servicio (S82 a): sin
+        // asignacion vigente tampoco entra a las pantallas.
+        $this->actingAs($member)
+            ->get('/units')
+            ->assertForbidden();
+
+        $this->actingAs($member)
+            ->get('/units/create')
+            ->assertForbidden();
+
+        $this->actingAs($member)
+            ->get('/people/create')
+            ->assertForbidden();
+    }
+
+    public function test_a_role_assignment_in_force_grants_access_to_the_web_surfaces(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$member] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->actingAs($member)
+            ->get('/units')
+            ->assertOk();
+    }
+
     public function test_a_role_assignment_that_is_not_in_force_yet_does_not_grant_permissions(): void
     {
         $complex = $this->makeComplex('Torres');
