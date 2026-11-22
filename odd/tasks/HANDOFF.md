@@ -105,6 +105,11 @@ que lo impida.
 13. **Contar los escapes de backtick**: el `grep -c` de bash no distingue el backslash literal y
     cuenta lineas con backtick. Para contar de verdad:
     `python3 -c "print(open(f).read().count(chr(92)+chr(96)))"`.
+14. **El commit documental de cierre no necesita otra ronda**: el guard de RDD vuelve a avisar
+    que hay un candidato sin revisar (es el mismo codigo con el delta del cierre), pero el
+    proveedor lo clasifica `acknowledged_predecessor_passive_delta` y **detiene** la ronda: el
+    predecesor ya aprobado con la autoridad quemada mas un delta solo documental no se revisa.
+    Es el cierre esperado, no un pendiente.
 
 ## 5. Deudas abiertas
 
