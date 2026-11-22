@@ -210,6 +210,112 @@ class RoleSurfaceTest extends CoreTestCase
         ]);
     }
 
+    // ------------------------------------------------------------- edicion
+
+    public function test_the_admin_edits_the_name_and_replaces_the_permissions_of_a_role(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $role = $this->makeComplexRole($complex, 'seguridad', 'Seguridad');
+        $role->grantPermission('unit.view');
+
+        $this->actingAs($admin)
+            ->putJson("/api/v1/core/roles/{$role->id}", [
+                'name' => 'Seguridad nocturna',
+                'permissions' => ['complex.manage_members'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Seguridad nocturna')
+            ->assertJsonPath('data.permissions', ['complex.manage_members']);
+
+        $this->assertSame('Seguridad nocturna', $role->fresh()->name);
+
+        // El conjunto de permisos se reemplaza, no se acumula.
+        $this->assertDatabaseMissing('role_permissions', [
+            'role_id' => $role->id,
+            'permission_key' => 'unit.view',
+        ]);
+
+        $this->assertDatabaseHas('role_permissions', [
+            'role_id' => $role->id,
+            'permission_key' => 'complex.manage_members',
+        ]);
+    }
+
+    public function test_the_key_of_a_role_cannot_be_changed(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $role = $this->makeComplexRole($complex, 'seguridad', 'Seguridad');
+
+        $this->actingAs($admin)
+            ->putJson("/api/v1/core/roles/{$role->id}", [
+                'key' => 'otro_rol',
+                'name' => 'Seguridad',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La clave del rol es inmutable.');
+
+        $this->assertSame('seguridad', $role->fresh()->key);
+    }
+
+    public function test_a_system_role_cannot_be_edited(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $systemRole = Role::where('key', SystemRole::COMPLEX_ADMIN->value)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->putJson("/api/v1/core/roles/{$systemRole->id}", [
+                'name' => 'Administrador',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Los roles del sistema no se pueden editar.');
+
+        $this->assertSame(SystemRole::COMPLEX_ADMIN->label(), $systemRole->fresh()->name);
+    }
+
+    public function test_a_role_of_another_complex_is_not_found(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        $other = $this->makeComplex('Otro conjunto');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $foreign = $this->makeComplexRole($other, 'portero', 'Portero');
+
+        $this->actingAs($admin)
+            ->putJson("/api/v1/core/roles/{$foreign->id}", [
+                'name' => 'Portero nocturno',
+            ])
+            ->assertNotFound();
+
+        $this->assertSame('Portero', $foreign->fresh()->name);
+    }
+
+    public function test_a_member_without_the_permission_cannot_edit_a_role(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$resident] = $this->makeMember($complex, SystemRole::RESIDENT);
+
+        $role = $this->makeComplexRole($complex, 'seguridad', 'Seguridad');
+
+        $this->actingAs($resident)
+            ->putJson("/api/v1/core/roles/{$role->id}", [
+                'name' => 'Seguridad nocturna',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('Seguridad', $role->fresh()->name);
+    }
+
     // ------------------------------------------------------------- helpers
 
     /**

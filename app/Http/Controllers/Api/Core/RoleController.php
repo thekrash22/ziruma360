@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Core;
 
 use App\Http\Requests\Core\StoreRoleRequest;
+use App\Http\Requests\Core\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Models\Role;
 use Illuminate\Database\Eloquent\Builder;
@@ -92,6 +93,39 @@ class RoleController extends CoreController
         }
 
         return $this->present($role)->response()->setStatusCode(201);
+    }
+
+    /**
+     * Edicion de un rol del conjunto (S86, S87).
+     *
+     * La `key` no se toca: es inmutable. Los permisos, cuando vienen,
+     * reemplazan el conjunto vigente.
+     */
+    public function update(UpdateRoleRequest $request, int $role): JsonResponse
+    {
+        $model = $request->role();
+
+        DB::transaction(function () use ($request, $model): void {
+            if ($request->has('name')) {
+                $model->name = (string) $request->input('name');
+            }
+
+            if ($request->has('description')) {
+                $model->description = $request->input('description');
+            }
+
+            $model->save();
+
+            if ($request->replacesPermissions()) {
+                $model->permissions()->delete();
+
+                foreach ($request->permissions() as $permission) {
+                    $model->grantPermission($permission);
+                }
+            }
+        });
+
+        return $this->present($model)->response();
     }
 
     /**

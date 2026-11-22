@@ -41,6 +41,14 @@ class RolePolicy
     }
 
     /**
+     * Edicion de un rol del conjunto.
+     */
+    public function update(User $user, Role $role, int $complexId): bool
+    {
+        return $this->scopedPermission($user, $complexId, ComplexPermission::COMPLEX_MANAGE_MEMBERS);
+    }
+
+    /**
      * Permiso de conjunto resuelto con alcance explicito.
      */
     private function scopedPermission(User $user, int $complexId, ComplexPermission $permission): bool

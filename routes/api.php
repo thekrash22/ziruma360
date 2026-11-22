@@ -200,6 +200,10 @@ Route::prefix('v1/core')
 
         Route::post('roles', [RoleController::class, 'store'])
             ->name('api.core.roles.store');
+
+        Route::put('roles/{role}', [RoleController::class, 'update'])
+            ->whereNumber('role')
+            ->name('api.core.roles.update');
     });
 
 /*
