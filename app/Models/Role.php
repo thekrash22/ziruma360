@@ -20,11 +20,13 @@ class Role extends Model
         'description',
         'is_system',
         'is_editable',
+        'is_active',
     ];
 
     protected $casts = [
         'is_system' => 'boolean',
         'is_editable' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     /**
@@ -49,6 +51,17 @@ class Role extends Model
     public function isComplexRole(): bool
     {
         return $this->residential_complex_id !== null;
+    }
+
+    /**
+     * Check if this role is in force.
+     *
+     * Un rol desactivado conserva su traza y sus asignaciones, pero deja de
+     * estar en vigor: no concede permisos (spec S88).
+     */
+    public function isActive(): bool
+    {
+        return (bool) $this->is_active;
     }
 
     /**

@@ -38,7 +38,7 @@ class MembershipResource extends JsonResource
             'invited_at' => $this->invited_at?->toIso8601String(),
             'joined_at' => $this->joined_at?->toIso8601String(),
             'roles' => $this->roles
-                ->filter(fn (Role $role): bool => $this->roleIsInForce($role))
+                ->filter(fn (Role $role): bool => $role->is_active && $this->roleIsInForce($role))
                 ->map(fn (Role $role): array => [
                     'id' => $role->id,
                     'key' => $role->key,
@@ -54,7 +54,8 @@ class MembershipResource extends JsonResource
      * El rol esta en vigor cuando su vigencia abra y cierre admiten el ahora.
      *
      * La vigencia es la del pivote de la asignacion (`valid_from`,
-     * `valid_until`), la misma que gobierna los permisos.
+     * `valid_until`), la misma que gobierna los permisos. Un rol desactivado
+     * tampoco esta en vigor (spec S88).
      */
     private function roleIsInForce(Role $role): bool
     {

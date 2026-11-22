@@ -65,6 +65,19 @@ enum ComplexPermission: string
     case PARKING_MANAGE = 'parking.manage';
     case PARKING_ASSIGN = 'parking.assign';
 
+    /**
+     * Las claves del catalogo cerrado de permisos.
+     *
+     * Es la unica fuente de verdad de las claves validas: un rol propio del
+     * conjunto solo puede llevar permisos de aqui (spec S86).
+     *
+     * @return array<int, string>
+     */
+    public static function keys(): array
+    {
+        return array_map(static fn (self $permission): string => $permission->value, self::cases());
+    }
+
     public function label(): string
     {
         return match ($this) {

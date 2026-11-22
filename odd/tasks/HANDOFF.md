@@ -5,13 +5,14 @@ completo sin depender de la conversacion anterior.
 
 ## 1. Donde esta el estado
 
-- Rama de integracion: **`stg`** (commit `97c6c76`; merges de los PR #24 `fix-doc-structure`,
-  #25 `version-spec` y #26 `memberships-fixes`).
-- Arbol limpio. Sin commits sin pushear ni ramas pendientes (locales y remotas borradas).
-- Suite completa en verde contra PostgreSQL real: **592 pruebas / 1.658 assertions**
-  (`docker compose exec -T app php artisan test`). Pint limpio sobre 228 archivos.
+- Rama de integracion: **`stg`** (commit `abbcc2a`; merges de los PR #24 `fix-doc-structure`,
+  #25 `version-spec`, #26 `memberships-fixes` y #27 `handoff-t22c`).
+- Rama de trabajo: **`feat/complex-roles`** (T22c), pusheada y esperando el PR manual a `stg`.
+- Arbol limpio. Sin commits sin pushear.
+- Suite completa en verde contra PostgreSQL real: **614 pruebas / 1.732 assertions**
+  (`docker compose exec -T app php artisan test`). Pint limpio sobre 236 archivos.
 - **Feature doc (el contrato de todos los work units)**: `odd/tasks/ziruma360-core-admin.md`
-  (specs S1-S82, Log L1-L76, tabla de Tasks y de pendientes). Espejo en
+  (specs S1-S89, Log L1-L79, tabla de Tasks y de pendientes). Espejo en
   `odd/ziruma360-core-admin/tasks.md`.
 - **El spec del core ya esta versionado**: `docs/Ziruma360_Core_Administracion_Conjunto.md`
   (antes vivia en `/docs`, fuera del repo). Ojo: el `.gitignore` ignora `/docs/*` y re-incluye
@@ -27,85 +28,101 @@ completo sin depender de la conversacion anterior.
 | T21 | Matriz §1.3 verificable: las seis celdas sin respaldo, la plataforma sin permisos de mas y un contrato fila×columna por rol | `review-a6279ba9f46fdb9e` | PASS 8/8 |
 | T22a | Superficie de membresias del conjunto: seis endpoints en `/api/v1/core/members` (listar, invitar, aceptar, suspender, revocar, roles) | `review-be2fd9644104f15d` | PASS 9/9 |
 | T22b | Vigencia real del permiso (`PermissionService` delega en `ScopedPermission`) y atomicidad de la invitacion | `review-41e69d28d3e3d17f` | PASS 9/9 |
+| T22c | Roles propios del conjunto (RN-C03): `GET/POST/PUT /api/v1/core/roles`, con la `key` inmutable, el `name` unico por conjunto, los permisos del catalogo cerrado y la baja por desactivacion | `review-52865f31707e648b` | PASS 10/10 |
 
 Ademas: el feature doc quedo **reparado** (mi resolucion del merge habia perdido los
-encabezados de seccion) y el **spec del core quedo versionado**.
+encabezados de seccion) y el **spec del core quedo versionado**. T22c sumo la superficie de
+roles del conjunto (`RolePolicy`, `RoleResource`, las dos requests y la migracion
+`is_active`), con la baja por desactivacion: `ScopedPermission` y `MembershipResource`
+filtran el rol inactivo, de modo que deja de conceder permisos de inmediato.
 
-## 3. Proxima unidad: T22c (decidida por el usuario)
+## 3. Proxima unidad: T22d (consulta de auditoria)
 
-**Alcance: roles propios del conjunto (RN-C03).** El area de membresias quedo a medias: hoy se
-pueden asignar roles del catalogo a una membresia, pero **no se pueden crear roles propios**
-del conjunto.
+**Alcance: la auditoria (§1.6).** Dos frentes: `complex.view_audit` esta sembrado **sin
+puerta de entrada** (ningun endpoint lo exige todavia), y el trait `Auditable` solo lo usan
+`residential_complexes` y `property_unit_ownerships`, mientras §1.6 exige traza en los
+siete dominios: membresias, roles, politicas, titularidad, ocupantes y estructura fisica.
 
 Decisiones a tomar al abrirla (las del padre, por defecto):
 
-1. Los roles de sistema (`is_system`) **no se editan ni se borran**; un rol propio del conjunto
-   si, pero su `key` es **inmutable** (es el identificador estable, como el `code` del conjunto:
-   solo cambia en `draft`). `name` unico por conjunto.
-2. Los permisos de un rol propio salen **del catalogo cerrado** (`ComplexPermission`): una clave
-   desconocida se rechaza con 422.
-3. Permiso de la escritura: `complex.manage_members` (ya sembrado y ya con puerta de entrada
-   desde T22a). **No hacen falta claves nuevas en el catalogo.**
-4. Superficie propuesta: `GET /api/v1/core/roles` (sistema + propios del conjunto),
-   `POST /api/v1/core/roles`, `PUT /api/v1/core/roles/{role}`. Sin borrado (un rol se desactiva,
-   no se elimina) y sin pantalla todavia.
-5. Aislamiento: un rol de otro conjunto no se ve ni se modifica (404/422, nunca se filtra).
-6. TDD con RED observado, suite completa en verde y verificacion independiente obligatoria
-   (`Risk: item 2` y `item 3`: cambia el alcance efectivo de los roles del conjunto).
+1. La puerta de la consulta es la matriz de §1.3: `complex.view_audit` lo exige el
+   administrador del conjunto (no el portero ni el resident).
+2. La traza se extiende con el trait `Auditable` que ya existe (no un mecanismo nuevo):
+   `ResidentialComplexMembership`, `Role` y los dominios que falten.
+3. El alcance de la consulta es el conjunto activo: no hay consulta global entre conjuntos.
+4. TDD con RED observado, suite completa en verde y verificacion independiente obligatoria
+   (`Risk: item 3`: cambia el contrato de superficie y agrega el historico a varios dominios).
 
-**Specs a escribir**: S83 en adelante, en la seccion \`## Specs\` del feature doc, mas la fila de
-la tabla de Tasks y la entrada de Log. Leer primero el feature doc hasta \`## Log\` (L67-L76) para
-no repetir lo ya decidido.
+**Specs a escribir**: S90 en adelante, en la seccion `## Specs` del feature doc, mas la fila
+de la tabla de Tasks y la entrada de Log. Leer primero el feature doc hasta `## Log`
+(L78-L79) para no repetir lo ya decidido.
 
-**Despues**: T22d (consulta de auditoria: \`complex.view_audit\` esta sembrado **sin puerta**;
-y extender el trait \`Auditable\` a los siete dominios que §1.6 exige: membresias, roles, politicas,
-titularidad, ocupantes y estructura fisica — hoy solo hay traza en \`property_unit_ownerships\` y
-\`residential_complexes\`).
+**Deuda que deja T22c** (arranca con esto a la vista): un rol desactivado puede seguir
+asignado a una membresia; no concede nada (lo filtra `ScopedPermission`), pero no hay puerta
+que lo impida.
 
 ## 4. Playbook operativo (lo que costo aprender)
 
-1. **Ritmo de entrega**: rama \`feat/<nombre>\` desde \`stg\`, PR manual con base \`stg\`. Si la
+1. **Ritmo de entrega**: rama `feat/<nombre>` desde `stg`, PR manual con base `stg`. Si la
    unidad depende de otra que todavia no esta mergeada, la rama va **encadenada** sobre esa y el
-   PR tambien encadenado. Nunca acumular sobre \`main\`.
-2. **Guard de RDD**: bloquea el \`git push\` si el rango commiteado no esta assessed. El assess
-   va con \`baseRef\` (**sha de 40 caracteres**) + \`committedOnly: true\`. Ademas **bloquea los
+   PR tambien encadenado. Nunca acumular sobre `main`.
+2. **Guard de RDD**: bloquea el `git push` si el rango commiteado no esta assessed. El assess
+   va con `baseRef` (**sha de 40 caracteres**) + `committedOnly: true`. Ademas **bloquea los
    comandos compuestos**: commit y push van en llamadas separadas.
-3. **La ronda nativa no corre sobre el diff acumulado del core** (\`lens_context_budget_exceeded\`):
-   cada ronda se acota a su work unit con su \`baseRef\`. Si el delta es solo documental, el
-   proveedor lo clasifica \`passive\` / \`acknowledged_predecessor_passive_delta\` y no procede ronda.
-4. **Para la captura**, el \`baseRef\` tiene que ser el **base tree que emite el propio STATUS**
-   (no el sha del commit base): con el sha da \`selector-mismatch\`. El START, en cambio, acepta el
-   sha del commit base, y un sha abreviado da \`base-ref-unresolvable\`.
+3. **La ronda nativa no corre sobre el diff acumulado del core** (`lens_context_budget_exceeded`):
+   cada ronda se acota a su work unit con su `baseRef`. Si el delta es solo documental, el
+   proveedor lo clasifica `passive` / `acknowledged_predecessor_passive_delta` y no procede ronda.
+4. **Para la captura**, el `baseRef` tiene que ser el **base tree que emite el propio STATUS**
+   (no el sha del commit base): con el sha da `selector-mismatch`. El START, en cambio, acepta el
+   sha del commit base, y un sha abreviado da `base-ref-unresolvable`.
 5. **Conflicto de merge en el feature doc**: resolver **por seccion**, no por hunk de conflicto, y
-   **verificar la estructura** (los encabezados \`## ...\` y los separadores \`---\`) contra la version
+   **verificar la estructura** (los encabezados `## ...` y los separadores `---`) contra la version
    buena. Un hunk a mano puede perder los encabezados, y el doc es el contrato que leen los workers.
    Verificar ademas que no falte ninguna entrada (specs, logs, filas) frente a las dos fuentes.
-6. **En el doc, nunca escapes de backtick**: escribir \`\\\`\`\` dentro de un heredoc deja el
-   backslash literal y rompe el markdown. Se detecta con \`grep -c '\\\\\\\`'\`.
+6. **En el doc, nunca escapes de backtick**: escribir codigos de backtick escapados dentro de
+   un heredoc deja el backslash literal y rompe el markdown. Se detecta contando la
+   secuencia backslash+backtick (ver el punto 13).
 7. **Handoff del worker**: que apunte al documento y no repita el contrato. Un handoff largo hizo
    que un worker agotara su cuota de tokens y muriera **dejando las pruebas escritas pero sin
    implementar**: es un fallo recuperable, se relanza con el handoff mas corto.
-8. **Verificacion independiente** (\`gentle-ai-verify\`): 9-10 puntos, con **mutation testing** sobre
-   una copia bajo \`/tmp\` (nunca en el repo) y **diferencial** contra el commit base cuando el
+8. **Verificacion independiente** (`gentle-ai-verify`): 9-10 puntos, con **mutation testing** sobre
+   una copia bajo `/tmp` (nunca en el repo) y **diferencial** contra el commit base cuando el
    cambio altera comportamiento observable. Su hallazgo tipico —"algo funciona pero no esta
    protegido por ninguna prueba"— se cierra con una prueba propia (pasó en T22a y T22b).
-9. **Comandos**: suite \`docker compose exec -T app php artisan test\` (PostgreSQL \`z360_test\`; la
-   base de desarrollo se deja migrada y sin datos), focal con \`--filter\`, Pint con
-   \`docker compose exec -T app ./vendor/bin/pint\`.
-10. **Permisos con alcance**: \`ScopedPermission\` es la **unica** fuente de verdad (membresia
+9. **Comandos**: suite `docker compose exec -T app php artisan test` (PostgreSQL `z360_test`; la
+   base de desarrollo se deja migrada y sin datos), focal con `--filter`, Pint con
+   `docker compose exec -T app ./vendor/bin/pint`.
+10. **Permisos con alcance**: `ScopedPermission` es la **unica** fuente de verdad (membresia
     activa + rol del conjunto o del catalogo + asignacion vigente + permiso en el catalogo).
-    \`PermissionService\` y las policies delegan. No reimplementar esa consulta en ningun sitio.
+    `PermissionService` y las policies delegan. No reimplementar esa consulta en ningun sitio.
+11. **La ronda nativa hay que acotarla**: el `START` por defecto apunta a `main` y el
+    candidato sale como el diff acumulado del core (`lens_context_budget_exceeded`). El `START`
+    acepta el sha de 40 del commit base con `committedOnly: true` (para una unidad, el de
+    `stg`) y ahi el candidato es solo la unidad.
+12. **Un lente por ronda en este host**: el `START` se rechaza con `lenses-invalid` si se piden
+    dos o mas; con uno solo (`risk`) pasa. Los cuatro lentes del store del perfil no llegan al
+    proveedor: el store del prefijo es el que manda.
+13. **Contar los escapes de backtick**: el `grep -c` de bash no distingue el backslash literal y
+    cuenta lineas con backtick. Para contar de verdad:
+    `python3 -c "print(open(f).read().count(chr(92)+chr(96)))"`.
+14. **El commit documental de cierre no necesita otra ronda**: el guard de RDD vuelve a avisar
+    que hay un candidato sin revisar (es el mismo codigo con el delta del cierre), pero el
+    proveedor lo clasifica `acknowledged_predecessor_passive_delta` y **detiene** la ronda: el
+    predecesor ya aprobado con la autoridad quemada mas un delta solo documental no se revisa.
+    Es el cierre esperado, no un pendiente.
 
 ## 5. Deudas abiertas
 
-- **T22d**: consulta de auditoria (\`complex.view_audit\` sembrado sin puerta) y extender
-  \`Auditable\` a los siete dominios de §1.6.
-- \`isDuplicatedMembership\` (\`app/Http/Controllers/Api/Core/MembershipController.php:114\`) detecta
-  el duplicado por SQLSTATE **y** por el nombre de la tabla: un \`UNIQUE\` futuro en esa tabla
+- **T22d**: consulta de auditoria (`complex.view_audit` sembrado sin puerta) y extender
+  `Auditable` a los siete dominios de §1.6.
+- Un rol desactivado puede seguir asignado a una membresia: no concede nada (lo filtra
+  `ScopedPermission`), pero no hay puerta que lo impida.
+- `isDuplicatedMembership` (`app/Http/Controllers/Api/Core/MembershipController.php:114`) detecta
+  el duplicado por SQLSTATE **y** por el nombre de la tabla: un `UNIQUE` futuro en esa tabla
   heredaria el mismo mensaje de "membresia duplicada".
-- Los lentes de revision nativa (\`review-risk\`, \`review-reliability\`) **no tienen modelo por
-  defecto**: hay que asignarlo en la configuracion del host. El store del perfil
-  (\`~/.pi/gentle-ai/models.json\`) y \`subagents.json\` ya quedaron con las cuatro entradas; el
-  store del prefijo (\`install/config/models.json\`, que es el que consulta el proveedor) lo
-  asigno el usuario a mano. Sin eso **ninguna** ronda nativa puede correr.
-- El \`/docs\` ya no esta ignorado, pero solo esta incluido el spec (ver la nota de la seccion 1).
+- Los lentes de revision nativa **no tienen modelo por defecto**: hay que asignarlo en la
+  configuracion del host. El store del perfil (`~/.pi/gentle-ai/models.json`) y
+  `subagents.json` ya quedaron con las cuatro entradas, pero el store del prefijo
+  (`install/config/models.json`, que es el que consulta el proveedor) solo tiene el de
+  `review-risk`: con dos o mas lentes el `START` se rechaza con `lenses-invalid`.
+- El `/docs` ya no esta ignorado, pero solo esta incluido el spec (ver la nota de la seccion 1).

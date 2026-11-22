@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Core\MembershipController;
 use App\Http\Controllers\Api\Core\OwnershipController;
 use App\Http\Controllers\Api\Core\PersonController;
 use App\Http\Controllers\Api\Core\PropertyUnitController;
+use App\Http\Controllers\Api\Core\RoleController;
 use App\Http\Controllers\Api\ResidentialComplexController;
 use App\Http\Middleware\ResolveActiveComplex;
 use App\Http\Middleware\ResolvePropertyUnit;
@@ -192,6 +193,17 @@ Route::prefix('v1/core')
         Route::put('members/{membership}/roles', [MembershipController::class, 'roles'])
             ->whereNumber('membership')
             ->name('api.core.members.roles');
+
+        // Roles del conjunto (S83-S88).
+        Route::get('roles', [RoleController::class, 'index'])
+            ->name('api.core.roles.index');
+
+        Route::post('roles', [RoleController::class, 'store'])
+            ->name('api.core.roles.store');
+
+        Route::put('roles/{role}', [RoleController::class, 'update'])
+            ->whereNumber('role')
+            ->name('api.core.roles.update');
     });
 
 /*
