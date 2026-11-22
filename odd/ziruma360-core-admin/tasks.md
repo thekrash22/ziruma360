@@ -243,7 +243,7 @@ FK compuestas de mismo conjunto, CHECKs de dominio y vigencia, y `ON DELETE NO A
 ## Integracion T20 + T21 + T22a
 - Estado: resuelto. El usuario mergeo T20 en `stg` (PR #22) y T22a dentro de la rama de T21 (PR #21); el PR de T21 sobre `stg` dio conflicto en el feature doc, que se resolvio localmente en orden numerico (specs S65-S78, Tasks T20/T21/T22a, Log L67-L73, Delivery T20/T21/T22a)
 - Verificacion del arbol combinado: **581 pruebas / 1.620 assertions** en verde (561 de la rama de T22a + 20 de T20) y Pint PASS en 227 archivos. Conviven las tres unidades y la policy de conjuntos lleva las tres piezas a la vez
-- La ronda nativa sobre el rango combinado no se puede correr: `lens_context_budget_exceeded` (2.738 lineas, 16 rutas). Techo estructural ya visto en L42/L48: **el diff acumulado del core no entra en el presupuesto del lente**, asi que las rondas son por work unit. T21 (\`review-a6279ba9f46fdb9e\`) y T22a (\`review-be2fd9644104f15d\`) ya estan aprobadas y quemadas
+- La ronda nativa sobre el rango combinado no se puede correr: `lens_context_budget_exceeded` (2.738 lineas, 16 rutas). Techo estructural ya visto en L42/L48: **el diff acumulado del core no entra en el presupuesto del lente**, asi que las rondas son por work unit. T21 (`review-a6279ba9f46fdb9e`) y T22a (`review-be2fd9644104f15d`) ya estan aprobadas y quemadas
 
 ## T22: Membresias, roles y auditoria
 - Estado: T22a, T22b y T22c cerradas; T22d pendiente
