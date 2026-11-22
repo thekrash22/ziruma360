@@ -173,6 +173,20 @@
 
 **S82.** Pruebas: (a) una asignacion de rol vencida **no** concede permisos en las superficies que resuelven por `PermissionService` (personas y unidades, web y API), comprobado por HTTP real; (b) una asignacion vigente si concede; (c) un rol de otro conjunto no concede; (d) el rechazo es atomico: cuando el alta de la membresia falla, la persona conserva el `user_id` que tenia (o nulo); (e) una segunda invitacion del mismo par responde 422 y no deja una segunda membresia; (f) el servicio y la policy resuelven lo mismo (una sola fuente de verdad).
 
+**S83.** Superficie de roles del conjunto en `/api/v1/core/roles`, con el conjunto activo resuelto en el servidor como el resto de `/api/v1/core/*`. `GET /api/v1/core/roles` lista los roles del sistema (los del catálogo, `is_system`) y los **roles propios del conjunto activo**. Un rol de otro conjunto no aparece nunca en el listado y no se filtra su existencia (ACE-C01).
+
+**S84.** La escritura la exige `complex.manage_members` **dentro del conjunto**: un miembro sin ese permiso recibe 403 en el listado y en la escritura. La puerta es la `RolePolicy`, que delega en `ScopedPermission` (la única fuente de verdad del permiso con alcance), como exige SEG-C03.
+
+**S85.** `POST /api/v1/core/roles` crea un **rol propio del conjunto** con `{key, name, description, permissions}`. La `key` es el identificador estable del rol y es **inmutable**: se fija en el alta y no cambia después. El `name` es único dentro del conjunto. Una `key` o un `name` ya usado en el conjunto se rechaza con 422 y no queda ningún rol a medias.
+
+**S86.** Los permisos de un rol propio salen del **catálogo cerrado** (`ComplexPermission`): una clave que no está en el catálogo se rechaza con 422 y el rol no se crea ni se modifica. El conjunto de permisos de un rol se **reemplaza** en cada edición.
+
+**S87.** `PUT /api/v1/core/roles/{role}` edita un rol propio del conjunto: su `name`, su `description`, su estado y el reemplazo de sus permisos. Un rol del sistema (`is_system`) no se edita (403) y un rol de otro conjunto no se resuelve (404). La `key` no se puede cambiar: si la petición trae una `key` distinta de la del rol, se rechaza con 422 y la `key` sigue siendo la misma. La `key` de un rol propio no puede coincidir con la de un rol del catálogo, para que la asignación de roles por clave siga siendo inequívoca.
+
+**S88.** Un rol **no se elimina: se desactiva**. Un rol desactivado (`is_active = false`) sigue existiendo, con su traza y sus asignaciones, pero deja de estar en vigor: `ScopedPermission` lo ignora, de modo que deja de conceder permisos de inmediato, y la superficie de membresías deja de exponerlo como rol en vigor. No hay `DELETE` en la superficie de roles.
+
+**S89.** Pruebas: aislamiento (un rol de otro conjunto no aparece en el listado y responde 404 al editarlo), matriz de permisos (con y sin `complex.manage_members`), alta de un rol propio con sus permisos del catálogo, rechazo de una clave de permiso fuera del catálogo (422) y de una `key` o un `name` duplicado (422), inmutabilidad de la `key`, edición con reemplazo del conjunto de permisos, rechazo de editar un rol del sistema (403), y pérdida inmediata de permisos al desactivar un rol.
+
 
 ---
 
@@ -200,6 +214,7 @@
 | T21 | S69-S72 | Inline (rama `feat/permission-matrix`, desde `stg`) | Commits `fa1d5b4` + `8890b51` + registro documental |
 | T22a | S73-S78 | Inline (rama `feat/memberships-surface`, encadenada sobre `feat/permission-matrix`) | Commits `c811488` + `94d9e18` + `7fda3a6` + registro documental |
 | T22b | S79-S82 | Inline (rama `feat/memberships-fixes`, encadenada sobre `feat/fix-doc-structure`) | Commits `a567eca` + `8e03299` + registro documental |
+| T22c | S83-S89 | Inline (rama `feat/complex-roles`, desde `stg`) | Commits pendientes + registro documental |
 
 ---
 
@@ -221,6 +236,7 @@
 | T20 | Privilegios y estados del conjunto: suspender/activar solo plataforma, tabla de transiciones validas y precondiciones de activacion (ACE-C03) | T18 | Alta | ✅ Cerrado (commits `f085f79` + `5501cf6` + `24619c1`; suite 539/1.503; verificacion independiente PASS en 6/6 puntos con mutation testing; **ronda nativa APROBADA y autoridad quemada** en `review-b53a16e08ca9e10d` tras corregir el CRITICAL `R3-suspended-reactivation-mixed-write`) |
 | T21 | Matriz §1.3 completa: las seis celdas sin respaldo, la plataforma sin permisos de mas y la prueba fila×columna de la matriz | T18 | Alta | ✅ Cerrado (commits `fa1d5b4` + `8890b51`; suite 531/1.463; verificacion independiente PASS en 8/8 puntos con mutation testing; **ronda nativa APROBADA y autoridad quemada** en `review-a6279ba9f46fdb9e`) |
 | T22b | Vigencia real del permiso en `PermissionService` y atomicidad de la invitacion (R3-ATOMIC-INVITE) | T22a | Alta | ✅ Cerrado (commits `a567eca` + `8e03299`; suite 592/1.658; verificacion independiente PASS en 9/9 con diferencial de 15 endpoints; **ronda nativa APROBADA y autoridad quemada** en `review-41e69d28d3e3d17f`) |
+| T22c | Roles propios del conjunto (RN-C03): crear, editar y desactivar roles propios con permisos del catálogo cerrado | T22b | Alta | 🔄 En curso (specs S83-S89, rama `feat/complex-roles`) |
 
 ---
 
@@ -830,6 +846,20 @@ Deuda que T17 hereda y deja anotada: `ComplexContext` sigue guardando el conjunt
 
 
 **L77.** Handoff para la sesion siguiente. El estado completo de las cuatro unidades (T20, T21, T22a y T22b), el alcance de la proxima unidad (T22c: roles propios del conjunto, RN-C03), el playbook operativo y las deudas abiertas quedan en **`odd/tasks/HANDOFF.md`**, que se escribe para sobrevivir al cambio de sesion. Motivo: el feature doc grew hasta las L76 y el trabajo pendiente necesita un punto de entrada unico.
+
+**L78.** Apertura de T22c (roles propios del conjunto, RN-C03), con las specs S83-S89. Decisiones del padre (las que el handoff dejo como default): la `key` de un rol propio es **inmutable** (es el identificador estable, como el `code` del conjunto), el `name` es único por conjunto, los permisos salen del **catálogo cerrado** (`ComplexPermission`), la escritura la exige `complex.manage_members` (no hacen falta claves nuevas en el catálogo), la superficie es `GET /api/v1/core/roles`, `POST /api/v1/core/roles` y `PUT /api/v1/core/roles/{role}` (sin `DELETE`: un rol se desactiva, no se elimina) y un rol de otro conjunto no se ve ni se modifica (404, nunca se filtra).
+
+(a) **Lo que ya estaba.** El esquema ya soportaba los roles propios: `roles.residential_complex_id` (nullable), `is_system`, `is_editable`, la tabla `role_permissions` (`role_id`, `permission_key`) y el pivote `membership_roles`. `ScopedPermission` ya resolvia el rol propio del conjunto (`roles.residential_complex_id = $complexId`, junto a los roles de sistema). Lo que faltaba era la **superficie de escritura**: no existia `/api/v1/core/roles`, ni `RolePolicy`, ni `RoleResource`, ni las requests de alta y de edicion.
+
+(b) **Lo que se agrega.** La superficie de roles (listado, alta y edicion), la `RolePolicy` que delega en `ScopedPermission` (SEG-C03: las policies centralizan las verificaciones), la columna `is_active` en `roles` para la desactivacion, y el filtro de rol inactivo en `ScopedPermission` (un rol desactivado deja de conceder permisos de inmediato) y en la superficie de membresias (un rol desactivado deja de exponerse como rol en vigor).
+
+(c) **La desactivacion es la forma de baja.** RN-C03 deja los roles de sistema sin eliminar; aqui el mismo criterio se aplica a los roles propios: no hay `DELETE`, hay `is_active`. El rol desactivado conserva su traza y sus asignaciones, y un rol reactivado vuelve a estar en vigor.
+
+(d) **Rama y entrega.** `feat/complex-roles` desde `stg` (la unidad no depende de otra rama sin mergear). El PR es manual, con base `stg`.
+
+(e) **Alcance del riesgo.** Item 2 (privilegios: `complex.manage_members` pasa a ser operable y el conjunto puede cambiar el alcance efectivo de sus roles) e item 3 (contrato: nueva superficie HTTP, y `ScopedPermission` cambia de comportamiento para un rol desactivado). La verificacion independiente es obligatoria, con diferencial de las superficies que resuelven permisos.
+
+(f) **Nomenclatura.** La entrada L72 llama "T22b" a los roles propios, pero L76, L77 y el handoff llaman **T22c** a los roles propios y **T22d** a la consulta de auditoria. T22c es la numeracion canonica y L72 se deja como esta (el Log es historico); el espejo, que es un indice vivo, se corrige en esta unidad.
 
 ## Delivery
 - **Work unit T20 (privilegios y estados del conjunto).** Rama `feat/complex-status-privileges` desde `stg` (`dfa7a240`): tres commits (`b224eab` alcance documental, `f085f79` implementacion de S65-S68 y `5501cf6` correccion del no-op sobre conjuntos no escribibles), 9 rutas y 624 lineas contra `stg`. Cierra el defecto de privilegio por el que un administrador de conjunto podia suspender su propio conjunto por `PATCH status` (la matriz de §1.3 reserva esa operacion a la plataforma) y deja el estado con tabla de transiciones validada, precondiciones de activacion de ACE-C03 y una unica puerta de baja (el `DELETE` con `complex.edit`). TDD con RED observado en las tres tandas (7, 2 y 1 fallos) y GREEN; suite completa en PostgreSQL real **538 pruebas / 1.500 assertions** y Pint PASS sobre los siete archivos tocados. Verificacion independiente `gentle-ai-verify`: **PASS en los 6 puntos**, con 25 sondas propias y mutation testing que rompe pruebas concretas al quitar el filtro de vigencia del administrador y al hacer que `changeStatus()` devuelva siempre `true`; su hallazgo no bloqueante (NB-1: un no-op de estado sobre un conjunto no escribible respondia 200) quedo cerrado en `5501cf6` con tres regresiones de caracterizacion agregadas. La ronda nativa quedo **APROBADA con la autoridad quemada** en `review-b53a16e08ca9e10d` (L69), tras corregir el hallazgo CRITICAL `R3-suspended-reactivation-mixed-write` que la propia ronda detecto sobre la reactivacion; la linea anterior `review-19828ac61a283cbd` queda en `correction_required` sin autoridad quemada, con su slot del plan de correccion indespachable desde este host. El PR es manual, con base `stg`: `https://github.com/thekrash22/ziruma360/pull/new/feat/complex-status-privileges`.
