@@ -292,19 +292,27 @@ class ComplexController extends Controller
     {
         $candidates = [];
 
-        $explicit = $request->query('redirect');
+        // El destino explicito de la peticion (lo manda el selector de la
+        // cabecera). Vive en el cuerpo del POST: se lee de la entrada
+        // completa, no solo de la query.
+        $explicit = $request->input('redirect');
         if (is_string($explicit) && $explicit !== '') {
             $candidates[] = $explicit;
+        }
+
+        // La pantalla a la que el actor queria llegar: es la que el
+        // middleware guardo cuando lo mando a elegir conjunto. Va **antes**
+        // que la anterior, porque en el flujo real la pantalla anterior es
+        // la de seleccion (el referer del POST), y volver ahi seria volver
+        // al punto de partida.
+        $intended = $request->session()->get('url.intended');
+        if (is_string($intended) && $intended !== '') {
+            $candidates[] = $intended;
         }
 
         $previous = url()->previous();
         if (is_string($previous) && $previous !== '') {
             $candidates[] = $previous;
-        }
-
-        $intended = $request->session()->get('url.intended');
-        if (is_string($intended) && $intended !== '') {
-            $candidates[] = $intended;
         }
 
         $current = $request->fullUrl();

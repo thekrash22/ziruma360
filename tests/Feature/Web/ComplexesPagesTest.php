@@ -262,6 +262,47 @@ class ComplexesPagesTest extends CoreTestCase
         $this->assertSame($two->id, ComplexContext::getCurrentComplexId());
     }
 
+    public function test_after_choosing_from_the_selection_screen_the_actor_returns_to_the_page_he_was_trying_to_reach(): void
+    {
+        // El flujo real: el actor pide el dashboard, lo mandan a elegir
+        // conjunto y elige **desde la pantalla de seleccion** (el referer
+        // del POST es esa pantalla). Al terminar tiene que volver al
+        // dashboard, no quedarse en la pantalla de seleccion.
+        $one = $this->makeComplex('Conjunto A');
+        $two = $this->makeComplex('Conjunto B');
+
+        [$user] = $this->makeMember($one, SystemRole::COMPLEX_ADMIN);
+        $this->makeMember($two, SystemRole::COMPLEX_ADMIN, $user);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertRedirect('/complexes');
+
+        $this->actingAs($user)
+            ->withHeaders(['referer' => url('/complexes')])
+            ->post("/complexes/{$two->uuid}/select")
+            ->assertRedirect('/dashboard');
+
+        $this->assertSame($two->id, ComplexContext::getCurrentComplexId());
+    }
+
+    public function test_the_explicit_destination_of_the_selector_wins(): void
+    {
+        // El selector de la cabecera manda el destino explicito en el cuerpo
+        // del POST: ese destino es el que gana.
+        $one = $this->makeComplex('Conjunto A');
+        $two = $this->makeComplex('Conjunto B');
+
+        [$user] = $this->makeMember($one, SystemRole::COMPLEX_ADMIN);
+        $this->makeMember($two, SystemRole::COMPLEX_ADMIN, $user);
+
+        $this->actingAs($user)
+            ->post("/complexes/{$two->uuid}/select", ['redirect' => '/units'])
+            ->assertRedirect('/units');
+
+        $this->assertSame($two->id, ComplexContext::getCurrentComplexId());
+    }
+
     // ==================== Header y dashboard ====================
 
     public function test_the_header_shows_the_active_complex(): void
