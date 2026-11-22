@@ -65,10 +65,12 @@ class ComplexController extends Controller
         $query = ResidentialComplex::query();
 
         if (! $user->isPlatformAdmin()) {
-            // Un actor sin membresia activa **no tiene** conjuntos: su
-            // listado es vacio (no un 403), para que la UI pueda mostrar el
-            // estado "todavia no tenes conjuntos" y ofrecer el alta.
+            // Un actor sin membresia activa no tiene alcance sobre ningun
+            // conjunto: el listado responde 403, no un 200 vacio (la puerta
+            // de alcance que fijan las pruebas de la API de conjuntos).
             $complexIds = $user->complexes()->distinct()->pluck('residential_complexes.id');
+
+            abort_if($complexIds->isEmpty(), 403, 'No perteneces a ningún conjunto.');
 
             $query->whereIn('id', $complexIds);
         }

@@ -56,16 +56,16 @@ class ComplexTenantRootApiTest extends CoreTestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_an_actor_without_memberships_gets_an_empty_listing(): void
+    public function test_an_actor_without_memberships_cannot_list_complexes(): void
     {
-        // Un actor sin membresia activa no tiene conjuntos: el listado es
-        // vacio, no un 403, para que la UI pueda ofrecer el alta.
+        // Un actor sin membresia activa no tiene alcance sobre ningun
+        // conjunto: la API responde 403. El estado vacio de la UI lo resuelve
+        // la proyeccion web, no esta puerta.
         $user = User::factory()->create();
 
         $this->actingAs($user)
             ->getJson('/api/v1/complexes')
-            ->assertOk()
-            ->assertJsonPath('data', []);
+            ->assertForbidden();
     }
 
     public function test_a_complex_of_another_actor_is_not_listed_and_is_not_resolved(): void

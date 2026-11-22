@@ -50,6 +50,11 @@ const menuGroups: MenuGroup[] = [
         route: 'people.index',
         icon: 'people',
       },
+      {
+        label: 'Conjuntos',
+        route: 'complexes.index',
+        icon: 'home',
+      },
     ],
   },
   {

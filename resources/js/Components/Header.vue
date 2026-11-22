@@ -1,12 +1,61 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 
 defineProps<{
   sidebarOpen: boolean;
 }>();
 
+interface Complex {
+  uuid: string;
+  name: string;
+  code: string;
+  status: string;
+  status_label: string;
+  is_current: boolean;
+  is_member: boolean;
+}
+
 const page = usePage();
 const user = (page.props.auth as any)?.user ?? null;
+
+const complexes = computed<Complex[]>(() => ((page.props as any).complexes as Complex[]) ?? []);
+const activeComplex = computed<Complex | null>(() => ((page.props as any).complex as Complex | null) ?? null);
+
+// Solo se puede elegir un conjunto del que el actor es miembro activo.
+const selectable = computed(() => complexes.value.filter((complex) => complex.is_member));
+
+const selected = ref(activeComplex.value?.uuid ?? '');
+
+watch(
+  () => activeComplex.value?.uuid,
+  (uuid) => {
+    selected.value = uuid ?? '';
+  }
+);
+
+// Si el conjunto activo no es elegible, el selector arranca en el primero.
+watch(
+  () => selectable.value.map((complex) => complex.uuid),
+  (uuids) => {
+    if (!uuids.includes(selected.value)) {
+      selected.value = uuids[0] ?? '';
+    }
+  },
+  { immediate: true }
+);
+
+// El header muestra siempre el conjunto activo y ofrece el cambio cuando
+// el actor tiene mas de uno (spec S94).
+const switchComplex = () => {
+  if (!selected.value) return;
+
+  router.post(
+    route('complexes.select', selected.value),
+    { redirect: page.url },
+    { preserveScroll: true }
+  );
+};
 </script>
 
 <template>
@@ -32,6 +81,38 @@ const user = (page.props.auth as any)?.user ?? null;
 
       <!-- Right side -->
       <div class="flex items-center gap-3">
+        <!-- Conjunto activo -->
+        <div v-if="activeComplex" class="flex items-center gap-2">
+          <template v-if="selectable.length > 1">
+            <label class="hidden text-sm text-gray-500 dark:text-gray-400 xl:block" for="active-complex">
+              Conjunto
+            </label>
+            <select
+              id="active-complex"
+              v-model="selected"
+              class="rounded-lg border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              @change="switchComplex"
+            >
+              <option v-for="complex in selectable" :key="complex.uuid" :value="complex.uuid">
+                {{ complex.name }}
+              </option>
+            </select>
+          </template>
+          <span
+            v-else
+            class="rounded-full bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+          >
+            {{ activeComplex.name }}
+          </span>
+        </div>
+        <Link
+          v-else
+          :href="route('complexes.index')"
+          class="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100 dark:bg-orange-500/10 dark:text-orange-300"
+        >
+          Elegir conjunto
+        </Link>
+
         <!-- Dark mode toggle -->
         <button
           class="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800"
