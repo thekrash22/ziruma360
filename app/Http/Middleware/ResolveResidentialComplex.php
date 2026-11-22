@@ -24,7 +24,7 @@ class ResolveResidentialComplex
 
         abort_if($user === null, 401, 'No autenticado.');
 
-        $value = $request->route('building');
+        $value = $request->route('complex');
 
         if (! is_string($value) || ! Str::isUuid($value)) {
             abort(404, 'Conjunto no encontrado.');

@@ -1,12 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\Core\ComplexController;
 use App\Http\Controllers\Api\Core\ComplexSettingsController;
 use App\Http\Controllers\Api\Core\MembershipController;
 use App\Http\Controllers\Api\Core\OwnershipController;
 use App\Http\Controllers\Api\Core\PersonController;
 use App\Http\Controllers\Api\Core\PropertyUnitController;
 use App\Http\Controllers\Api\Core\RoleController;
-use App\Http\Controllers\Api\ResidentialComplexController;
 use App\Http\Middleware\ResolveActiveComplex;
 use App\Http\Middleware\ResolvePropertyUnit;
 use App\Http\Middleware\ResolveResidentialComplex;
@@ -32,12 +32,21 @@ use Illuminate\Support\Facades\Route;
 | Conjuntos residenciales
 |--------------------------------------------------------------------------
 |
-| `/api/v1/buildings` expone los conjuntos residenciales (`ResidentialComplex`).
-| La superficie exige sesion, cookies, CSRF y `auth`: el alcance del actor se
+| `/api/v1/complexes` expone los conjuntos residenciales (`ResidentialComplex`).
+| El conjunto es el tenant: tiene superficie propia y nombre propio (S90), y
+| `/api/v1/buildings` queda libre para la API de edificios (T24). La
+| superficie exige sesion, cookies, CSRF y `auth`: el alcance del actor se
 | resuelve en el servidor contra sus membresias activas (o el catalogo
 | completo para la plataforma) y un conjunto fuera de ese alcance responde
 | 404, sin filtrar su existencia. La baja archiva el conjunto: nunca borra en
 | cascada sus datos.
+|
+| El conjunto activo se elige de forma explicita (S93):
+| `POST /api/v1/complexes/{complex}/select` lo fija en la sesion. Solo se
+| puede elegir un conjunto del que el actor es miembro activo.
+|
+| El parametro de ruta de la ficha es `complex`, como el recurso: el
+| conjunto no se llama `building` en ningun sitio de su propia superficie.
 |
 */
 
@@ -50,23 +59,26 @@ Route::prefix('v1')
         'auth',
     ])
     ->group(function (): void {
-        Route::get('buildings', [ResidentialComplexController::class, 'index'])
-            ->name('api.buildings.index');
+        Route::get('complexes', [ComplexController::class, 'index'])
+            ->name('api.complexes.index');
 
-        Route::post('buildings', [ResidentialComplexController::class, 'store'])
-            ->name('api.buildings.store');
+        Route::post('complexes', [ComplexController::class, 'store'])
+            ->name('api.complexes.store');
 
-        Route::get('buildings/{building}', [ResidentialComplexController::class, 'show'])
+        Route::post('complexes/{complex}/select', [ComplexController::class, 'select'])
+            ->name('api.complexes.select');
+
+        Route::get('complexes/{complex}', [ComplexController::class, 'show'])
             ->middleware(ResolveResidentialComplex::class)
-            ->name('api.buildings.show');
+            ->name('api.complexes.show');
 
-        Route::match(['put', 'patch'], 'buildings/{building}', [ResidentialComplexController::class, 'update'])
+        Route::match(['put', 'patch'], 'complexes/{complex}', [ComplexController::class, 'update'])
             ->middleware(ResolveResidentialComplex::class)
-            ->name('api.buildings.update');
+            ->name('api.complexes.update');
 
-        Route::delete('buildings/{building}', [ResidentialComplexController::class, 'destroy'])
+        Route::delete('complexes/{complex}', [ComplexController::class, 'destroy'])
             ->middleware(ResolveResidentialComplex::class)
-            ->name('api.buildings.destroy');
+            ->name('api.complexes.destroy');
     });
 
 /*

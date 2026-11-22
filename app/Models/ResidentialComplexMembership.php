@@ -128,6 +128,6 @@ class ResidentialComplexMembership extends Model
 
     public function membershipRoles(): HasMany
     {
-        return $this->hasMany(MembershipRole::class);
+        return $this->hasMany(MembershipRole::class, 'membership_id');
     }
 }
