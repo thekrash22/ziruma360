@@ -198,7 +198,10 @@ class ComplexesPagesTest extends CoreTestCase
             ->from('/complexes')
             ->post("/complexes/{$two->uuid}/select");
 
-        $response->assertRedirect('/complexes');
+        // La pantalla de seleccion no es un destino: al elegir desde ahi, sin
+        // otro destino guardado, el actor aterriza en la ficha del conjunto
+        // que eligio (no se queda en la pantalla de seleccion).
+        $response->assertRedirect("/complexes/{$two->uuid}");
 
         $this->assertSame($two->id, ComplexContext::getCurrentComplexId());
     }
@@ -278,6 +281,37 @@ class ComplexesPagesTest extends CoreTestCase
             ->get('/dashboard')
             ->assertRedirect('/complexes');
 
+        $this->actingAs($user)
+            ->withHeaders(['referer' => url('/complexes')])
+            ->post("/complexes/{$two->uuid}/select")
+            ->assertRedirect('/dashboard');
+
+        $this->assertSame($two->id, ComplexContext::getCurrentComplexId());
+    }
+
+    public function test_the_full_flow_returns_to_the_dashboard_after_the_selection_screen_is_loaded(): void
+    {
+        // El flujo real completo: el actor pide el dashboard, lo mandan a
+        // elegir conjunto, **carga la pantalla de seleccion** y elige desde
+        // ahi. Al terminar tiene que volver al dashboard: ni la pantalla de
+        // seleccion ni su propia URL pueden pisar el destino guardado.
+        $one = $this->makeComplex('Conjunto A');
+        $two = $this->makeComplex('Conjunto B');
+
+        [$user] = $this->makeMember($one, SystemRole::COMPLEX_ADMIN);
+        $this->makeMember($two, SystemRole::COMPLEX_ADMIN, $user);
+
+        // 1. Pide el dashboard: lo mandan a elegir conjunto.
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertRedirect('/complexes');
+
+        // 2. Carga la pantalla de seleccion (el destino guardado no se pisa).
+        $this->actingAs($user)
+            ->get('/complexes')
+            ->assertOk();
+
+        // 3. Elige desde la pantalla de seleccion.
         $this->actingAs($user)
             ->withHeaders(['referer' => url('/complexes')])
             ->post("/complexes/{$two->uuid}/select")

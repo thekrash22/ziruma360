@@ -296,7 +296,7 @@ class ComplexController extends Controller
         // cabecera). Vive en el cuerpo del POST: se lee de la entrada
         // completa, no solo de la query.
         $explicit = $request->input('redirect');
-        if (is_string($explicit) && $explicit !== '') {
+        if (is_string($explicit) && $explicit !== '' && ! $this->isSelectionScreen($explicit)) {
             $candidates[] = $explicit;
         }
 
@@ -311,7 +311,7 @@ class ComplexController extends Controller
         }
 
         $previous = url()->previous();
-        if (is_string($previous) && $previous !== '') {
+        if (is_string($previous) && $previous !== '' && ! $this->isSelectionScreen($previous)) {
             $candidates[] = $previous;
         }
 
@@ -328,6 +328,20 @@ class ComplexController extends Controller
         }
 
         return route('complexes.show', $complex->uuid);
+    }
+
+    /**
+     * La pantalla de seleccion no es un destino.
+     *
+     * Volver a ella seria volver al punto de partida: el actor eligio un
+     * conjunto para **seguir trabajando**, no para quedarse en la pantalla
+     * de eleccion.
+     */
+    private function isSelectionScreen(string $url): bool
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+
+        return is_string($path) && rtrim($path, '/') === '/complexes';
     }
 
     /**

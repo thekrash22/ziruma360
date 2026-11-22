@@ -59,11 +59,10 @@ const getStatusColor = (status: string) => {
 };
 
 const selectComplex = (uuid: string) => {
-  router.post(
-    route('complexes.select', uuid),
-    { redirect: page.url },
-    { preserveScroll: true }
-  );
+  // Sin destino explicito: el servidor vuelve a donde el actor queria
+  // llegar (el destino guardado). Mandarse la propia URL de la pantalla
+  // de seleccion como destino lo devolveria aqui.
+  router.post(route('complexes.select', uuid), {}, { preserveScroll: true });
 };
 </script>
 

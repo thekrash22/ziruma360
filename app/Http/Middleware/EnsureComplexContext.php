@@ -38,8 +38,12 @@ class EnsureComplexContext
 
         // If no complex found and user has complexes, they need to select one
         if ($complexId === null && $request->user()->activeMemberships()->exists()) {
-            // Store intended URL to redirect after selection
-            if ($request->isMethod('GET')) {
+            // El destino al que volver se guarda **una sola vez**: la
+            // pantalla de seleccion se carga despues y no puede pisar el
+            // destino original (si lo hiciera, el actor volveria a la
+            // pantalla de seleccion en vez de a donde queria ir).
+            if ($request->isMethod('GET') && ! $this->isSelectionSurface($request)
+                && ! session()->has('url.intended')) {
                 session()->put('url.intended', $request->fullUrl());
             }
 
