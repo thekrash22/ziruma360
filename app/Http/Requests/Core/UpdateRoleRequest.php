@@ -21,7 +21,9 @@ use Illuminate\Support\Facades\Gate;
  * peticion trae una `key` distinta de la del rol, se rechaza con 422 y la
  * `key` sigue siendo la misma. Los permisos tienen que estar en el catalogo
  * cerrado (`ComplexPermission`) y, cuando vienen, **reemplazan** el conjunto
- * vigente; si no vienen, el conjunto vigente se conserva.
+ * vigente; si no vienen, el conjunto vigente se conserva. El estado
+ * (`is_active`) es la forma de baja: un rol se desactiva, no se elimina
+ * (S88).
  */
 class UpdateRoleRequest extends FormRequest
 {
@@ -57,6 +59,7 @@ class UpdateRoleRequest extends FormRequest
             'description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'permissions' => ['sometimes', 'array'],
             'permissions.*' => ['string'],
+            'is_active' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -75,6 +78,7 @@ class UpdateRoleRequest extends FormRequest
             'description.max' => 'La descripcion del rol no puede superar los 255 caracteres.',
             'permissions.array' => 'Los permisos del rol deben ser una lista.',
             'permissions.*.string' => 'Cada permiso del rol debe ser un texto.',
+            'is_active.boolean' => 'El estado del rol debe ser booleano.',
         ];
     }
 

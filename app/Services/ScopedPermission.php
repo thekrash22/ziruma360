@@ -102,6 +102,7 @@ final class ScopedPermission
             ->where(fn (Builder $query) => $query
                 ->whereNull('roles.residential_complex_id')
                 ->orWhere('roles.residential_complex_id', $complexId))
+            ->where('roles.is_active', true)
             ->where(fn (Builder $query) => $query
                 ->whereNull('membership_roles.valid_from')
                 ->orWhere('membership_roles.valid_from', '<=', now()))

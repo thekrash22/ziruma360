@@ -76,6 +76,7 @@ class RoleController extends CoreController
                 $role->description = $request->input('description');
                 $role->is_system = false;
                 $role->is_editable = true;
+                $role->is_active = true;
                 $role->save();
 
                 foreach ($request->permissions() as $permission) {
@@ -96,10 +97,11 @@ class RoleController extends CoreController
     }
 
     /**
-     * Edicion de un rol del conjunto (S86, S87).
+     * Edicion de un rol del conjunto (S86, S87, S88).
      *
      * La `key` no se toca: es inmutable. Los permisos, cuando vienen,
-     * reemplazan el conjunto vigente.
+     * reemplazan el conjunto vigente. El estado (`is_active`) es la forma de
+     * baja: el rol se desactiva, no se elimina.
      */
     public function update(UpdateRoleRequest $request, int $role): JsonResponse
     {
@@ -112,6 +114,10 @@ class RoleController extends CoreController
 
             if ($request->has('description')) {
                 $model->description = $request->input('description');
+            }
+
+            if ($request->has('is_active')) {
+                $model->is_active = $request->boolean('is_active');
             }
 
             $model->save();
