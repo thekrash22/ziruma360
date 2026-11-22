@@ -244,6 +244,54 @@ class RoleSurfaceTest extends CoreTestCase
         ]);
     }
 
+    public function test_the_edit_is_rejected_when_a_permission_is_not_in_the_catalogue(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $role = $this->makeComplexRole($complex, 'seguridad', 'Seguridad');
+        $role->grantPermission('unit.view');
+
+        $this->actingAs($admin)
+            ->putJson("/api/v1/core/roles/{$role->id}", [
+                'name' => 'Seguridad nocturna',
+                'permissions' => ['permiso.inventado'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'El permiso no pertenece al catálogo de permisos.');
+
+        // El rechazo no deja el rol a medias: ni el nombre ni los permisos
+        // cambian.
+        $this->assertSame('Seguridad', $role->fresh()->name);
+
+        $this->assertDatabaseHas('role_permissions', [
+            'role_id' => $role->id,
+            'permission_key' => 'unit.view',
+        ]);
+    }
+
+    public function test_the_same_key_can_exist_in_another_complex(): void
+    {
+        $complex = $this->makeComplex('Torres');
+        $other = $this->makeComplex('Otro conjunto');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->makeComplexRole($other, 'seguridad', 'Seguridad');
+
+        // La `key` es unica **dentro del conjunto**: la misma clave puede
+        // vivir en otro conjunto sin colisionar.
+        $this->actingAs($admin)
+            ->postJson('/api/v1/core/roles', [
+                'key' => 'seguridad',
+                'name' => 'Seguridad propia',
+                'permissions' => [],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.key', 'seguridad');
+    }
+
     public function test_the_key_of_a_role_cannot_be_changed(): void
     {
         $complex = $this->makeComplex('Torres');
