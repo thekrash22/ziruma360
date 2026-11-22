@@ -8,6 +8,11 @@ use Illuminate\Support\Collection;
 
 /**
  * Servicio para verificar permisos de usuarios en el contexto del conjunto activo.
+ *
+ * No mantiene su propia consulta: delega en `ScopedPermission`, que es la
+ * unica fuente de verdad del permiso con alcance (membresia activa, rol del
+ * conjunto o del catalogo y asignacion vigente). Dos copias de la regla
+ * divergen, asi que el servicio y las policies resuelven lo mismo.
  */
 class PermissionService
 {
@@ -34,21 +39,7 @@ class PermissionService
      */
     public static function userHasPermissionInComplex(User $user, int $complexId, string $permissionKey): bool
     {
-        // Get user's membership in this complex
-        $membership = $user->memberships()
-            ->where('residential_complex_id', $complexId)
-            ->where('status', 'active')
-            ->with(['roles.permissions'])
-            ->first();
-
-        if (! $membership) {
-            return false;
-        }
-
-        // Check if any of the user's roles have this permission
-        return $membership->roles->contains(function ($role) use ($permissionKey) {
-            return $role->permissions->contains('permission_key', $permissionKey);
-        });
+        return ScopedPermission::hasKey($user, $complexId, $permissionKey);
     }
 
     /**
@@ -62,22 +53,7 @@ class PermissionService
             return collect();
         }
 
-        $membership = $user->memberships()
-            ->where('residential_complex_id', $complexId)
-            ->where('status', 'active')
-            ->with(['roles.permissions'])
-            ->first();
-
-        if (! $membership) {
-            return collect();
-        }
-
-        return $membership->roles
-            ->pluck('permissions')
-            ->flatten()
-            ->pluck('permission_key')
-            ->unique()
-            ->values();
+        return ScopedPermission::permissionKeys($user, $complexId);
     }
 
     /**
