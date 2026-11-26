@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\ComplexCatalog;
+use App\Services\PermissionService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -45,6 +46,9 @@ class HandleInertiaRequests extends Middleware
             // el middleware ya resolvio el contexto en el servidor.
             'complex' => fn (): ?array => ComplexCatalog::active($user),
             'complexes' => fn (): array => $user === null ? [] : ComplexCatalog::catalog($user),
+            // Los permisos del actor en el conjunto activo: el menu decide
+            // con ellos que entradas mostrar (spec S103).
+            'permissions' => fn (): array => $user === null ? [] : PermissionService::getUserPermissions($user)->all(),
         ];
     }
 }
