@@ -45,8 +45,36 @@ const selected = ref<AuditRow | null>(null);
 const action = ref(props.filters.action ?? '');
 const entityType = ref(props.filters.entity_type ?? '');
 const entityId = ref(props.filters.entity_id ?? '');
-const from = ref(props.filters.from ?? '');
-const to = ref(props.filters.to ?? '');
+
+// The filters of the trail accept a plain date or a full timestamp (the
+// request resolves a plain date as the whole day). The inputs are
+// `datetime-local`, so any filter of the URL is shown as it was and is sent
+// back with the same meaning.
+const toInputValue = (value: string | null): string => {
+  if (!value) {
+    return '';
+  }
+
+  const normalized = value.replace(' ', 'T');
+
+  return normalized.length === 10 ? `${normalized}T00:00` : normalized.slice(0, 16);
+};
+
+// The value the request receives. A midnight keeps the plain date, so the
+// request keeps resolving it as the beginning of the day (`from`) or the
+// end of the day (`to`).
+const toRequestValue = (value: string): string => {
+  if (!value) {
+    return '';
+  }
+
+  const [date, time = '00:00'] = value.split('T');
+
+  return time === '00:00' ? date : `${date} ${time}:00`;
+};
+
+const from = ref(toInputValue(props.filters.from));
+const to = ref(toInputValue(props.filters.to));
 
 const actionLabel = (value: string) =>
   props.actions.find((item) => item.value === value)?.label ?? value;
@@ -64,12 +92,35 @@ const actionClass = (value: string) => {
   return classes[value] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
 };
 
+// Two values are the same when they hold the same content, whatever the
+// order of their keys is.
+const sameValue = (left: unknown, right: unknown): boolean => {
+  if (left === right) {
+    return true;
+  }
+
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  const leftKeys = Object.keys(left as Record<string, unknown>);
+  const rightKeys = Object.keys(right as Record<string, unknown>);
+
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return [...new Set([...leftKeys, ...rightKeys])].every((key) =>
+    sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]),
+  );
+};
+
 const changedKeys = (row: AuditRow): string[] => {
   const before = row.before_data ?? {};
   const after = row.after_data ?? {};
 
   return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
-    (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+    (key) => !sameValue(before[key], after[key]),
   );
 };
 
@@ -112,8 +163,8 @@ const applyFilters = () => {
   if (action.value) params.action = action.value;
   if (entityType.value) params.entity_type = entityType.value;
   if (entityId.value) params.entity_id = entityId.value;
-  if (from.value) params.from = from.value;
-  if (to.value) params.to = to.value;
+  if (from.value) params.from = toRequestValue(from.value);
+  if (to.value) params.to = toRequestValue(to.value);
 
   router.get(route('auditoria.index'), params, { preserveState: true });
 };
@@ -214,7 +265,7 @@ const detailRows = computed(() => {
           <input
             id="filter-from"
             v-model="from"
-            type="date"
+            type="datetime-local"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
           />
         </div>
@@ -226,7 +277,7 @@ const detailRows = computed(() => {
           <input
             id="filter-to"
             v-model="to"
-            type="date"
+            type="datetime-local"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
           />
         </div>

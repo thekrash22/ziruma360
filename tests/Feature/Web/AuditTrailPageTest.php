@@ -122,13 +122,15 @@ class AuditTrailPageTest extends CoreTestCase
         );
     }
 
-    public function test_the_menu_entry_follows_the_permission(): void
+    public function test_the_server_publishes_the_permission_that_gates_the_audit_menu_entry(): void
     {
         $complex = $this->makeComplex('Torres');
 
         [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
         [$resident] = $this->makeMember($complex, SystemRole::RESIDENT);
 
+        // The administrator receives the permission: the menu shows the
+        // entry and the screen answers.
         $this->actingAs($admin)->get('/auditoria')->assertInertia(
             fn (AssertableInertia $page) => $page->where(
                 'permissions',
@@ -136,7 +138,30 @@ class AuditTrailPageTest extends CoreTestCase
             )
         );
 
+        // The resident does not receive it: the menu hides the entry and
+        // the screen is forbidden.
         $this->actingAs($resident)->get('/auditoria')->assertForbidden();
+
+        $this->actingAs($resident)->get('/units')->assertInertia(
+            fn (AssertableInertia $page) => $page->where(
+                'permissions',
+                fn (Collection $permissions): bool => ! $permissions->contains('complex.view_audit')
+            )
+        );
+    }
+
+    public function test_the_sidebar_gates_the_audit_entry_with_the_audit_permission(): void
+    {
+        // The menu is a Vue component and the project has no runner of
+        // JavaScript tests: the wiring of the entry is pinned here, and the
+        // decision itself (the published permissions) is pinned by the
+        // test above.
+        $sidebar = file_get_contents(resource_path('js/Components/Sidebar.vue'));
+
+        $this->assertIsString($sidebar);
+        $this->assertStringContainsString("route: 'auditoria.index'", $sidebar);
+        $this->assertStringContainsString("permission: 'complex.view_audit'", $sidebar);
+        $this->assertStringContainsString('permissions.value.includes(item.permission)', $sidebar);
     }
 
     /**
