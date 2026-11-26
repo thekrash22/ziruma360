@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MembershipStatus;
+use App\Models\Concerns\Auditable;
 use App\Policies\MembershipPolicy;
 use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,7 +22,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[UsePolicy(MembershipPolicy::class)]
 class ResidentialComplexMembership extends Model
 {
-    use HasFactory;
+    // The memberships are audited (spec §1.6): who, when, previous value and
+    // new value.
+    use Auditable, HasFactory;
 
     protected $table = 'residential_complex_memberships';
 
@@ -120,7 +123,10 @@ class ResidentialComplexMembership extends Model
      */
     public function roles(): BelongsToMany
     {
+        // The pivot is written through the model: the assignment leaves an
+        // audit trail (spec §1.6) and completes the complex of the row.
         return $this->belongsToMany(Role::class, 'membership_roles', 'membership_id')
+            ->using(MembershipRole::class)
             ->withPivot('valid_from', 'valid_until')
             ->withTimestamps()
             ->orderByRaw('membership_roles.valid_from asc nulls last');

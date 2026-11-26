@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\OccupancyStatus;
 use App\Enums\OccupancyType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,7 +22,8 @@ use Illuminate\Support\Str;
  */
 class UnitOccupancy extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The occupants are audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

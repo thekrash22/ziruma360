@@ -3,17 +3,33 @@
 namespace App\Models\Concerns;
 
 use App\Models\AuditLog;
+use LogicException;
 
 /**
- * Trait para modelos que requieren auditoría automática (spec §1.6).
+ * Trait for models that require automatic auditing (spec §1.6).
  *
- * El registro guarda quién (`actor_user_id`), cuándo (`occurred_at`), el
- * valor anterior y el nuevo (`before_data` / `after_data`) y el conjunto del
- * modelo auditado. Los snapshots nunca guardan contraseñas ni credenciales
- * (spec §1.6).
+ * The record keeps who (`actor_user_id`), when (`occurred_at`), the previous
+ * value and the new one (`before_data` / `after_data`) and the complex of the
+ * audited model. Snapshots never keep passwords nor credentials (spec §1.6).
+ *
+ * The complex of the trail is the complex of the audited model, never the
+ * complex of the session: the audit cannot depend on the surface the write
+ * came from. A record that belongs to a complex but cannot resolve it fails
+ * explicitly (the trail would be lost silently otherwise); a platform object
+ * (a catalog role, which belongs to no complex) is not audited and does not
+ * fail the write.
  */
 trait Auditable
 {
+    /**
+     * The value kept in a snapshot for a redacted attribute.
+     *
+     * The key stays visible so the structure of the change (which fields
+     * changed) remains readable, but the sensitive value never reaches the
+     * snapshot.
+     */
+    public const AUDIT_REDACTED = '[redacted]';
+
     /**
      * Boot the auditable trait.
      */
@@ -21,12 +37,20 @@ trait Auditable
     {
         // Log creation
         static::created(function ($model) {
+            $complexId = $model->auditResolvedComplexId();
+
+            // A platform object is not audited: it belongs to no complex and
+            // a trail without a complex is impossible (RN-C04).
+            if ($complexId === null) {
+                return;
+            }
+
             AuditLog::logCreated(
                 get_class($model),
                 $model->getKey(),
                 $model->auditSnapshot($model->getAttributes()),
                 null,
-                $model->auditComplexId()
+                $complexId
             );
         });
 
@@ -40,6 +64,12 @@ trait Auditable
                 return;
             }
 
+            $complexId = $model->auditResolvedComplexId();
+
+            if ($complexId === null) {
+                return;
+            }
+
             $original = array_intersect_key($model->getOriginal(), $relevantChanges);
 
             AuditLog::logUpdated(
@@ -48,7 +78,7 @@ trait Auditable
                 $model->auditSnapshot($original),
                 $model->auditSnapshot($relevantChanges),
                 null,
-                $model->auditComplexId()
+                $complexId
             );
         });
 
@@ -58,33 +88,38 @@ trait Auditable
                 return;
             }
 
+            $complexId = $model->auditResolvedComplexId();
+
+            if ($complexId === null) {
+                return;
+            }
+
             AuditLog::logDeleted(
                 get_class($model),
                 $model->getKey(),
                 $model->auditSnapshot($model->getAttributes()),
                 null,
-                $model->auditComplexId()
+                $complexId
             );
         });
     }
 
     /**
-     * Get the list of attributes to exclude from audit logging.
+     * The attributes that never reach a snapshot.
+     *
+     * @return list<string>
      */
     public function getAuditExcludedAttributes(): array
     {
-        return array_merge(
-            ['created_at', 'updated_at', 'password', 'password_confirmation', 'remember_token'],
-            $this->auditSensitiveAttributes()
-        );
+        return ['created_at', 'updated_at', 'password', 'password_confirmation', 'remember_token'];
     }
 
     /**
-     * Si el borrado del modelo debe dejar registro de auditoría.
+     * If the deletion of the model must leave an audit record.
      *
-     * Un conjunto residencial es su propio contenedor de auditoría: al
-     * borrarse, su traza se va con él (la FK de `audit_logs` va en cascada),
-     * así que no puede haber un registro que apunte al conjunto borrado.
+     * A residential complex is its own audit container: when it is deleted
+     * its trail goes with it (the `audit_logs` FK cascades), so there cannot
+     * be a record pointing to the deleted complex.
      */
     public function auditRecordsDeletion(): bool
     {
@@ -92,7 +127,11 @@ trait Auditable
     }
 
     /**
-     * Atributos adicionales que este modelo no quiere en las instantáneas.
+     * Additional attributes this model does not want in the snapshots.
+     *
+     * The exclusion is always per model, never a global list: only the model
+     * that holds a sensitive value knows how it has to be kept out of the
+     * trail.
      *
      * @return list<string>
      */
@@ -102,9 +141,9 @@ trait Auditable
     }
 
     /**
-     * El conjunto al que pertenece el registro auditado.
+     * The complex the audited record belongs to.
      *
-     * Los modelos que son un conjunto en sí mismos lo redefinen.
+     * The models that are a complex themselves override it.
      */
     public function auditComplexId(): ?int
     {
@@ -114,10 +153,49 @@ trait Auditable
     }
 
     /**
-     * Instantánea de auditoría de un conjunto de atributos.
+     * Whether the record is a platform object: it belongs to no complex.
      *
-     * Excluye los atributos sensibles y devuelve los valores JSON en su
-     * forma estructurada (no como la cadena cruda de la base).
+     * A platform object (a catalog role) is skipped by the audit without
+     * failing: it is an object of the platform, not of the complex, and a
+     * trail without a complex is impossible (RN-C04). A record that belongs to
+     * a complex but cannot resolve it is not a platform object: it fails
+     * visibly, because the trail would be lost silently.
+     */
+    public function auditIsPlatformObject(): bool
+    {
+        return false;
+    }
+
+    /**
+     * The complex of the trail, or null when the record is a platform object.
+     *
+     * @throws LogicException when the record belongs to a complex that cannot be resolved
+     */
+    public function auditResolvedComplexId(): ?int
+    {
+        $complexId = $this->auditComplexId();
+
+        if ($complexId !== null) {
+            return $complexId;
+        }
+
+        if ($this->auditIsPlatformObject()) {
+            return null;
+        }
+
+        throw new LogicException(sprintf(
+            'The %s record #%s belongs to a complex that cannot be resolved: its audit trail would be lost silently.',
+            static::class,
+            (string) $this->getKey()
+        ));
+    }
+
+    /**
+     * Audit snapshot of a set of attributes.
+     *
+     * It leaves out the excluded attributes and redacts the sensitive ones
+     * (the key stays, the value does not), and it returns the JSON values in
+     * their structured form (not as the raw string of the database).
      *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
@@ -125,10 +203,20 @@ trait Auditable
     public function auditSnapshot(array $attributes): array
     {
         $excluded = $this->getAuditExcludedAttributes();
+        $sensitive = $this->auditSensitiveAttributes();
         $snapshot = [];
 
         foreach ($attributes as $key => $value) {
             if (in_array($key, $excluded, true)) {
+                continue;
+            }
+
+            if (in_array($key, $sensitive, true)) {
+                // The value never reaches the snapshot, but the key stays
+                // visible: the structure of the change (which fields changed)
+                // has to remain readable.
+                $snapshot[$key] = $value === null ? null : self::AUDIT_REDACTED;
+
                 continue;
             }
 
@@ -139,7 +227,7 @@ trait Auditable
     }
 
     /**
-     * Normaliza el valor de un atributo para la instantánea.
+     * Normalizes the value of an attribute for the snapshot.
      */
     protected function auditValue(string $key, mixed $value): mixed
     {

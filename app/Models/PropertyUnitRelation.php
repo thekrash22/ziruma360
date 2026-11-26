@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PropertyUnitRelationStatus;
 use App\Enums\PropertyUnitRelationType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,7 +28,7 @@ use Illuminate\Support\Carbon;
  */
 class PropertyUnitRelation extends Model
 {
-    use BelongsToComplex;
+    use Auditable, BelongsToComplex;
 
     protected $table = 'property_unit_relations';
 

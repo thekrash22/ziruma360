@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ExclusiveUseAssignmentStatus;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  */
 class CommonPropertyExclusiveUseAssignment extends Model
 {
-    use BelongsToComplex;
+    use Auditable, BelongsToComplex;
 
     protected $table = 'common_property_exclusive_use_assignments';
 
@@ -49,6 +50,16 @@ class CommonPropertyExclusiveUseAssignment extends Model
     protected $hidden = [
         'id',
     ];
+
+    /**
+     * The document reference never reaches the audit trail.
+     *
+     * @return list<string>
+     */
+    public function auditSensitiveAttributes(): array
+    {
+        return ['document_reference'];
+    }
 
     /**
      * Bien comun asignado en uso exclusivo.

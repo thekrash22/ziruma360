@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Services\ComplexContext;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -111,10 +110,12 @@ class AuditLog extends Model
         ?int $complexId
     ): self {
         $actorId ??= auth()->id() === null ? null : (int) auth()->id();
-        $complexId ??= ComplexContext::getCurrentComplexId();
 
         // Un registro sin conjunto no se puede auditar: se falla de forma
-        // explicita en lugar de perder la traza en silencio (RN-C04).
+        // explicita en lugar de perder la traza en silencio (RN-C04). El
+        // conjunto es siempre el del modelo auditado, nunca el de la sesion:
+        // la auditoria no puede depender de la superficie por la que entro la
+        // escritura.
         if ($complexId === null) {
             throw new LogicException('No se puede auditar un registro sin conjunto residencial.');
         }

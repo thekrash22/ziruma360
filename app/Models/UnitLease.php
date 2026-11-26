@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LeaseStatus;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,7 +21,8 @@ use Illuminate\Support\Str;
  */
 class UnitLease extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The occupants are audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',
@@ -61,6 +63,19 @@ class UnitLease extends Model
     public function getRouteKeyName(): string
     {
         return 'uuid';
+    }
+
+    /**
+     * The attributes that never reach an audit snapshot (spec S99).
+     *
+     * The document of the tenant (the contract) is a documentary reference:
+     * the trail keeps the structure of the change, never the value.
+     *
+     * @return list<string>
+     */
+    public function auditSensitiveAttributes(): array
+    {
+        return ['document_reference'];
     }
 
     /**

@@ -68,6 +68,19 @@ class PropertyUnitOwnership extends Model
     }
 
     /**
+     * The attributes that never reach an audit snapshot (spec S99).
+     *
+     * The document that supports the ownership is a documentary reference:
+     * the trail keeps the structure of the change, never the value.
+     *
+     * @return list<string>
+     */
+    public function auditSensitiveAttributes(): array
+    {
+        return ['document_reference'];
+    }
+
+    /**
      * Relations
      */
     public function propertyUnit(): BelongsTo

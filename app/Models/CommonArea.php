@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CommonAreaStatus;
 use App\Enums\CommonAreaType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,7 +37,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class CommonArea extends Model
 {
-    use BelongsToComplex;
+    // The physical structure is audited (spec §1.6).
+    use Auditable, BelongsToComplex;
 
     protected $table = 'common_areas';
 

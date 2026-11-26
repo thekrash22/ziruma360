@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\EmploymentStatus;
 use App\Enums\EmploymentType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,7 +25,7 @@ use Illuminate\Support\Str;
  */
 class Employment extends Model
 {
-    use BelongsToComplex, HasFactory;
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',
