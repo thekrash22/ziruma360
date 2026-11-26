@@ -1,10 +1,17 @@
 <?php
 
+use App\Enums\MembershipStatus;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Web\BuildingController;
+use App\Http\Controllers\Web\ComplexController;
 use App\Http\Controllers\Web\Core\PersonController;
 use App\Http\Controllers\Web\Core\PropertyUnitController;
 use App\Http\Middleware\ResolveActiveComplex;
+use App\Models\Building;
+use App\Models\Person;
+use App\Models\PropertyUnit;
+use App\Models\ResidentialComplexMembership;
+use App\Services\ComplexContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -18,8 +25,31 @@ Route::get('/', function () {
     ]);
 });
 
+/*
+| Dashboard: los conteos reales del conjunto activo (spec S95).
+|
+| El dashboard dejo de ser mock: en vez de las cifras de ejemplo del
+| template muestra los conteos reales del conjunto activo (edificios,
+| unidades, personas y miembros activos). Cuando no hay conjunto activo no
+| inventa cifras: explica que hay que elegir uno.
+*/
 Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
+    $complex = ComplexContext::getCurrentComplex();
+
+    $stats = $complex === null ? null : [
+        'buildings' => Building::forComplex($complex->id)->count(),
+        'units' => PropertyUnit::forComplex($complex->id)->count(),
+        'people' => Person::forComplex($complex->id)->count(),
+        'members' => ResidentialComplexMembership::query()
+            ->where('residential_complex_id', $complex->id)
+            ->where('status', MembershipStatus::ACTIVE->value)
+            ->count(),
+    ];
+
+    return Inertia::render('Dashboard', [
+        'stats' => $stats,
+        'needsComplex' => $complex === null,
+    ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
@@ -36,6 +66,20 @@ Route::middleware('auth')->group(function () {
     Route::put('/buildings/{uuid}', [BuildingController::class, 'update'])->name('buildings.update');
     Route::delete('/buildings/{uuid}', [BuildingController::class, 'destroy'])->name('buildings.destroy');
     Route::post('/buildings/{uuid}/floors/generate', [BuildingController::class, 'generateFloors'])->name('buildings.floors.generate');
+
+    /*
+    | Complexes: la UI del tenant root (spec S94).
+    |
+    | El conjunto tiene nombre propio en la web. Estas rutas no pasan por
+    | `ResolveActiveComplex`: la pantalla de conjuntos muestra los conjuntos
+    | del actor, no solo el activo, y por ahi se elige el conjunto activo
+    | (`POST /complexes/{complex}/select`).
+    */
+    Route::get('/complexes', [ComplexController::class, 'index'])->name('complexes.index');
+    Route::get('/complexes/create', [ComplexController::class, 'create'])->name('complexes.create');
+    Route::post('/complexes', [ComplexController::class, 'store'])->name('complexes.store');
+    Route::get('/complexes/{complex}', [ComplexController::class, 'show'])->name('complexes.show');
+    Route::post('/complexes/{complex}/select', [ComplexController::class, 'select'])->name('complexes.select');
 
     /*
     | Units CRUD: dominio nuevo (property_units).

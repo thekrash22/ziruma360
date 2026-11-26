@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ziruma360 — Sistema de diseño</title>
+<style>
+  :root {
+    --brand-25:#f2f7ff; --brand-50:#ecf3ff; --brand-100:#dde9ff; --brand-200:#c2d6ff;
+    --brand-300:#9cb9ff; --brand-400:#7592ff; --brand-500:#465fff; --brand-600:#3641f5;
+    --brand-700:#2a31d8; --brand-800:#252dae; --brand-900:#262e89; --brand-950:#161950;
+    --white:#ffffff; --black:#101828;
+    --gray-25:#fcfcfd; --gray-50:#f9fafb; --gray-100:#f2f4f7; --gray-200:#e4e7ec;
+    --gray-300:#d0d5dd; --gray-400:#98a2b3; --gray-500:#667085; --gray-600:#475467;
+    --gray-700:#344054; --gray-800:#1d2939; --gray-900:#101828; --gray-950:#0c111d;
+    --gray-dark:#1a2231;
+    --success-500:#12b76a; --error-500:#f04438; --warning-500:#f79009;
+    --shadow-theme-xs: 0px 1px 2px 0px rgba(16,24,40,.05);
+    --shadow-theme-sm: 0px 1px 3px 0px rgba(16,24,40,.1), 0px 1px 2px 0px rgba(16,24,40,.06);
+    --shadow-theme-md: 0px 4px 8px -2px rgba(16,24,40,.1), 0px 2px 4px -2px rgba(16,24,40,.06);
+    --shadow-theme-lg: 0px 12px 16px -4px rgba(16,24,40,.08), 0px 4px 6px -2px rgba(16,24,40,.03);
+    --shadow-theme-xl: 0px 20px 24px -4px rgba(16,24,40,.08), 0px 8px 8px -4px rgba(16,24,40,.03);
+    --shadow-focus-ring: 0px 0px 0px 4px rgba(70,95,255,.12);
+    --fc-classic-border: var(--gray-200);
+    --font-outfit: Outfit, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 1440px; background: var(--gray-25); color: var(--gray-800);
+    font-family: var(--font-outfit); font-size: 14px; line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { padding: 32px; }
+  header.page-head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:28px; }
+  h1 { margin:0; font-size:36px; line-height:44px; font-weight:600; color:var(--gray-800); }
+  .sub { margin:4px 0 0; font-size:14px; color:var(--gray-500); }
+  .meta { font-size:12px; color:var(--gray-400); text-align:right; }
+  section { margin-bottom:32px; }
+  h2 { margin:0 0 12px; font-size:20px; line-height:30px; font-weight:600; color:var(--gray-800); }
+  h3 { margin:0 0 10px; font-size:14px; font-weight:600; color:var(--gray-600); text-transform:uppercase; letter-spacing:.06em; }
+  .card { background:var(--white); border:1px solid var(--gray-200); border-radius:.25rem; box-shadow:var(--shadow-theme-sm); padding:20px; }
+  .swatches { display:grid; grid-template-columns:repeat(11,1fr); gap:8px; }
+  .sw { border:1px solid var(--gray-200); border-radius:.375rem; overflow:hidden; background:var(--white); }
+  .sw .chip { height:56px; }
+  .sw .cap { padding:6px 8px; font-size:11px; line-height:16px; color:var(--gray-600); }
+  .sw .cap b { display:block; color:var(--gray-800); font-weight:600; }
+  .scale { display:grid; grid-template-columns:1.2fr 2fr; gap:12px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--gray-100); font-size:13px; }
+  .row:last-child { border-bottom:0; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; color:var(--gray-500); }
+  .type-row { display:flex; align-items:baseline; gap:16px; padding:6px 0; border-bottom:1px solid var(--gray-100); }
+  .type-row .spec { margin-left:auto; font-size:11px; color:var(--gray-400); }
+  .shadow-demo { height:56px; background:var(--white); border:1px solid var(--gray-200); border-radius:.375rem; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--gray-500); }
+  .comp-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; border-radius:.5rem; padding:10px 16px; font-size:14px; font-weight:500; border:1px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--brand-500); color:var(--white); }
+  .btn-primary:hover { background:var(--brand-600); }
+  .btn-secondary { background:var(--white); color:var(--gray-800); border-color:var(--gray-300); }
+  .field { width:100%; border:1px solid var(--gray-300); background:var(--white); border-radius:.5rem; padding:10px 12px; font-size:14px; color:var(--gray-800); font-family:inherit; }
+  .field:focus { outline:none; border-color:var(--brand-500); box-shadow:0 0 0 1px var(--brand-500), var(--shadow-focus-ring); }
+  .badge { display:inline-flex; align-items:center; border-radius:9999px; padding:2px 10px; font-size:12px; font-weight:500; }
+  .b-ok { background:#ecfdf3; color:#027a48; }
+  .b-warn { background:#fffaeb; color:#b54708; }
+  .b-err { background:#fef3f2; color:#b42318; }
+  .notice { border-radius:.5rem; padding:16px; font-size:14px; margin-bottom:12px; }
+  .n-ok { background:#ecfdf3; color:#027a48; }
+  .n-err { background:#fef3f2; color:#b42318; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; padding:12px 16px; font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--gray-500); border-bottom:1px solid var(--gray-200); background:var(--gray-50); }
+  td { padding:12px 16px; border-bottom:1px solid var(--gray-100); color:var(--gray-600); font-size:14px; }
+  tbody tr:hover { background:var(--gray-50); }
+  .t-strong { color:var(--gray-800); font-weight:500; }
+  .note { font-size:12px; color:var(--gray-400); margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="page-head">
+    <div>
+      <h1>Sistema de diseño</h1>
+      <p class="sub">Ziruma360 · TailAdmin sobre Tailwind v4 · tokens reales del proyecto</p>
+    </div>
+    <div class="meta">Fuente: resources/css/tailwind-admin.css (@theme)<br>Panel de referencia, 1440px</div>
+  </header>
+
+  <section>
+    <h2>Marca</h2>
+    <div class="card">
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#f2f7ff"></div><div class="cap"><b>25</b>#f2f7ff</div></div>
+        <div class="sw"><div class="chip" style="background:#ecf3ff"></div><div class="cap"><b>50</b>#ecf3ff</div></div>
+        <div class="sw"><div class="chip" style="background:#dde9ff"></div><div class="cap"><b>100</b>#dde9ff</div></div>
+        <div class="sw"><div class="chip" style="background:#c2d6ff"></div><div class="cap"><b>200</b>#c2d6ff</div></div>
+        <div class="sw"><div class="chip" style="background:#9cb9ff"></div><div class="cap"><b>300</b>#9cb9ff</div></div>
+        <div class="sw"><div class="chip" style="background:#7592ff"></div><div class="cap"><b>400</b>#7592ff</div></div>
+        <div class="sw"><div class="chip" style="background:#465fff"></div><div class="cap"><b>500</b>#465fff</div></div>
+        <div class="sw"><div class="chip" style="background:#3641f5"></div><div class="cap"><b>600</b>#3641f5</div></div>
+        <div class="sw"><div class="chip" style="background:#2a31d8"></div><div class="cap"><b>700</b>#2a31d8</div></div>
+        <div class="sw"><div class="chip" style="background:#252dae"></div><div class="cap"><b>800</b>#252dae</div></div>
+        <div class="sw"><div class="chip" style="background:#161950"></div><div class="cap"><b>950</b>#161950</div></div>
+      </div>
+      <p class="note">La acción primaria es <span class="mono">bg-brand-500</span> con hover <span class="mono">bg-brand-600</span>.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Neutros y semánticos</h2>
+    <div class="scale">
+      <div class="card">
+        <h3>Gris</h3>
+        <div class="row"><span class="t-strong" style="color:#101828">gray-900</span><span class="mono">#101828</span></div>
+        <div class="row"><span style="color:#1d2939">gray-800 · título</span><span class="mono">#1d2939</span></div>
+        <div class="row"><span style="color:#475467">gray-600</span><span class="mono">#475467</span></div>
+        <div class="row"><span style="color:#667085">gray-500 · secundario</span><span class="mono">#667085</span></div>
+        <div class="row"><span style="color:#98a2b3">gray-400</span><span class="mono">#98a2b3</span></div>
+        <div class="row"><span style="color:#d0d5dd">gray-300 · borde</span><span class="mono">#d0d5dd</span></div>
+        <div class="row"><span style="color:#e4e7ec">gray-200 · borde de tarjeta</span><span class="mono">#e4e7ec</span></div>
+        <div class="row"><span style="color:#f2f4f7">gray-100 · separador</span><span class="mono">#f2f4f7</span></div>
+        <div class="row"><span style="color:#f9fafb">gray-50 · cabecera de tabla</span><span class="mono">#f9fafb</span></div>
+      </div>
+      <div class="card">
+        <h3>Semánticos</h3>
+        <div class="row"><span class="badge b-ok">success-500</span><span class="mono">#12b76a</span></div>
+        <div class="row"><span class="badge b-warn">warning-500</span><span class="mono">#f79009</span></div>
+        <div class="row"><span class="badge b-err">error-500</span><span class="mono">#f04438</span></div>
+        <div class="row"><span class="badge" style="background:#f2f7ff;color:#2a31d8">brand-500</span><span class="mono">#465fff</span></div>
+        <div class="row"><span class="t-strong" style="color:#1a2231">gray-dark</span><span class="mono">#1a2231</span></div>
+        <div class="row"><span class="t-strong" style="color:#101828">black</span><span class="mono">#101828</span></div>
+        <div class="row"><span class="t-strong">white</span><span class="mono">#ffffff</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tipografía</h2>
+    <div class="card">
+      <div class="type-row"><span style="font-size:36px;line-height:44px;font-weight:600">Conjunto residencial</span><span class="spec">title-md 36/44 · Outfit</span></div>
+      <div class="type-row"><span style="font-size:20px;line-height:30px;font-weight:600">Lista de conjuntos</span><span class="spec">theme-xl 20/30</span></div>
+      <div class="type-row"><span style="font-size:14px">Cuerpo de texto y etiquetas de formulario</span><span class="spec">theme-sm 14/20</span></div>
+      <div class="type-row"><span style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#667085">Cabecera de tabla</span><span class="spec">theme-xs 12/18</span></div>
+      <p class="note">Única familia: <span class="mono">Outfit, sans-serif</span>. Puntos de corte: 375 · 425 · 640 · 768 · 1024 · 1280 · 1536.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sombras</h2>
+    <div class="scale">
+      <div class="card"><h3>Elevación</h3>
+        <div class="shadow-demo" style="box-shadow:var(--shadow-theme-xs);margin-bottom:10px">theme-xs</div>
+        <div class="shadow-demo" style="box-shadow:var(--shadow-theme-sm);margin-bottom:10px">theme-sm · tarjeta y tabla</div>
+        <div class="shadow-demo" style="box-shadow:var(--shadow-theme-md);margin-bottom:10px">theme-md</div>
+        <div class="shadow-demo" style="box-shadow:var(--shadow-theme-lg);margin-bottom:10px">theme-lg</div>
+        <div class="shadow-demo" style="box-shadow:var(--shadow-theme-xl)">theme-xl</div>
+      </div>
+      <div class="card"><h3>Foco y borde</h3>
+        <input class="field" value="Campo con foco" aria-label="Campo con foco">
+        <p class="note">Foco: <span class="mono">border-brand-500</span> + <span class="mono">ring-1 ring-brand-500</span> + <span class="mono">shadow-focus-ring</span> (4px rgba(70,95,255,.12)).</p>
+        <p class="note">Borde clásico de tabla: <span class="mono">--fc-classic-border: var(--color-gray-200)</span>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Componentes</h2>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Acciones y campos</h3>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+        <button class="btn btn-primary">Nuevo conjunto</button>
+        <button class="btn btn-secondary">Cancelar</button>
+        <span class="badge b-ok">activo</span>
+        <span class="badge b-warn">borrador</span>
+        <span class="badge b-err">archivado</span>
+      </div>
+      <input class="field" value="Nombre del conjunto" aria-label="Nombre del conjunto">
+    </div>
+
+    <div class="card">
+      <h3>Tabla</h3>
+      <table>
+        <thead><tr><th>Conjunto</th><th>Código</th><th>Estado</th><th>Módulos</th></tr></thead>
+        <tbody>
+          <tr><td class="t-strong">Altos del Parque</td><td class="mono">altos-del-parque</td><td><span class="badge b-ok">activo</span></td><td>2 de 6</td></tr>
+          <tr><td class="t-strong">Zboncak and Sons Residencial</td><td class="mono">zboncak-sons-2923</td><td><span class="badge b-warn">borrador</span></td><td>2 de 6</td></tr>
+        </tbody>
+      </table>
+      <div class="notice n-ok" style="margin-top:16px;margin-bottom:0">El conjunto quedó activo.</div>
+      <div class="notice n-err">No tenés permiso para crear conjuntos.</div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

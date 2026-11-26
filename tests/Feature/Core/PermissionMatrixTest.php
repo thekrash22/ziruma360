@@ -320,14 +320,14 @@ class PermissionMatrixTest extends CoreTestCase
 
         // La plataforma administra un conjunto del que no es miembro.
         $this->actingAs($platform)
-            ->patchJson("/api/v1/buildings/{$other->uuid}", ['legal_identifier' => 'NIT-PLATAFORMA'])
+            ->patchJson("/api/v1/complexes/{$other->uuid}", ['legal_identifier' => 'NIT-PLATAFORMA'])
             ->assertOk();
 
         $this->assertSame('NIT-PLATAFORMA', $other->fresh()->legal_identifier);
 
         // Y sigue creando conjuntos.
         $this->actingAs($platform)
-            ->postJson('/api/v1/buildings', [
+            ->postJson('/api/v1/complexes', [
                 'name' => 'Conjunto Nuevo',
                 'code' => 'conjunto-nuevo-'.uniqid(),
                 'address' => 'Calle 1 # 2-3',

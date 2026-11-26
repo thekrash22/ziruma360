@@ -97,7 +97,7 @@ class UpdateResidentialComplexRequest extends FormRequest
      */
     public function rules(): array
     {
-        $complexUuid = $this->route('building');
+        $complexUuid = $this->route('complex');
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],

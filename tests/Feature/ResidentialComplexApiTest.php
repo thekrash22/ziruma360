@@ -15,7 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Core\CoreTestCase;
 
 /**
- * Superficie `/api/v1/buildings` (conjuntos residenciales).
+ * Superficie `/api/v1/complexes` (conjuntos residenciales).
  *
  * La API de conjuntos exige sesion y `auth`, resuelve el alcance del actor
  * en el servidor contra sus membresias activas y aísla los conjuntos que no
@@ -28,47 +28,47 @@ class ResidentialComplexApiTest extends CoreTestCase
 
     // ---------------------------------------------------------------- guests
 
-    public function test_guest_cannot_list_buildings(): void
+    public function test_guest_cannot_list_complexes(): void
     {
-        $this->getJson('/api/v1/buildings')->assertUnauthorized();
+        $this->getJson('/api/v1/complexes')->assertUnauthorized();
     }
 
-    public function test_guest_cannot_create_a_building(): void
+    public function test_guest_cannot_create_a_complex(): void
     {
-        $this->postJson('/api/v1/buildings', $this->payload())->assertUnauthorized();
+        $this->postJson('/api/v1/complexes', $this->payload())->assertUnauthorized();
     }
 
-    public function test_guest_cannot_show_a_building(): void
+    public function test_guest_cannot_show_a_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
 
-        $this->getJson("/api/v1/buildings/{$complex->uuid}")->assertUnauthorized();
+        $this->getJson("/api/v1/complexes/{$complex->uuid}")->assertUnauthorized();
     }
 
-    public function test_guest_cannot_update_a_building(): void
+    public function test_guest_cannot_update_a_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
 
-        $this->patchJson("/api/v1/buildings/{$complex->uuid}", ['name' => 'Otro nombre'])
+        $this->patchJson("/api/v1/complexes/{$complex->uuid}", ['name' => 'Otro nombre'])
             ->assertUnauthorized();
     }
 
-    public function test_guest_cannot_archive_a_building(): void
+    public function test_guest_cannot_archive_a_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
 
-        $this->deleteJson("/api/v1/buildings/{$complex->uuid}")->assertUnauthorized();
+        $this->deleteJson("/api/v1/complexes/{$complex->uuid}")->assertUnauthorized();
     }
 
     // ------------------------------------------------------------- alcance
 
-    public function test_actor_without_active_membership_cannot_list_buildings(): void
+    public function test_actor_without_active_membership_cannot_list_complexes(): void
     {
         $this->makeComplex('Torres del Norte');
 
         $user = User::factory()->create();
 
-        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+        $this->actingAs($user)->getJson('/api/v1/complexes')->assertForbidden();
     }
 
     public function test_listing_only_returns_the_complexes_of_the_actor(): void
@@ -78,7 +78,7 @@ class ResidentialComplexApiTest extends CoreTestCase
 
         [$user] = $this->makeMember($mine, SystemRole::RESIDENT);
 
-        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+        $response = $this->actingAs($user)->getJson('/api/v1/complexes')->assertOk();
 
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.uuid', $mine->uuid);
@@ -92,7 +92,7 @@ class ResidentialComplexApiTest extends CoreTestCase
 
         [$user] = $this->makeMember($first, SystemRole::PLATFORM_ADMIN);
 
-        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+        $response = $this->actingAs($user)->getJson('/api/v1/complexes')->assertOk();
 
         $uuids = array_column($response->json('data'), 'uuid');
         $this->assertContains($first->uuid, $uuids);
@@ -106,7 +106,7 @@ class ResidentialComplexApiTest extends CoreTestCase
 
         [$user] = $this->makeMember($mine, SystemRole::RESIDENT);
 
-        $this->actingAs($user)->getJson("/api/v1/buildings/{$other->uuid}")->assertNotFound();
+        $this->actingAs($user)->getJson("/api/v1/complexes/{$other->uuid}")->assertNotFound();
     }
 
     public function test_member_of_another_complex_cannot_update_it(): void
@@ -117,7 +117,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($mine, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$other->uuid}", ['name' => 'Secuestrado'])
+            ->patchJson("/api/v1/complexes/{$other->uuid}", ['name' => 'Secuestrado'])
             ->assertNotFound();
 
         $this->assertSame('Conjunto Ajeno', $other->fresh()->name);
@@ -130,18 +130,18 @@ class ResidentialComplexApiTest extends CoreTestCase
 
         [$user] = $this->makeMember($mine, SystemRole::COMPLEX_ADMIN);
 
-        $this->actingAs($user)->deleteJson("/api/v1/buildings/{$other->uuid}")->assertNotFound();
+        $this->actingAs($user)->deleteJson("/api/v1/complexes/{$other->uuid}")->assertNotFound();
 
         $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $other->fresh()->status);
     }
 
-    public function test_returns_404_for_nonexistent_building(): void
+    public function test_returns_404_for_nonexistent_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->getJson('/api/v1/buildings/2c1f4b0e-0000-4000-8000-000000000000')
+            ->getJson('/api/v1/complexes/2c1f4b0e-0000-4000-8000-000000000000')
             ->assertNotFound();
     }
 
@@ -150,12 +150,12 @@ class ResidentialComplexApiTest extends CoreTestCase
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
-        $this->actingAs($user)->getJson('/api/v1/buildings/no-es-un-uuid')->assertNotFound();
+        $this->actingAs($user)->getJson('/api/v1/complexes/no-es-un-uuid')->assertNotFound();
     }
 
     // -------------------------------------------------------------- listado
 
-    public function test_can_filter_buildings_by_status(): void
+    public function test_can_filter_complexes_by_status(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         $complex->update(['status' => ResidentialComplexStatus::ACTIVE]);
@@ -163,24 +163,24 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $response = $this->actingAs($user)
-            ->getJson('/api/v1/buildings?status=active')
+            ->getJson('/api/v1/complexes?status=active')
             ->assertOk();
 
         $response->assertJsonCount(1, 'data');
     }
 
-    public function test_can_search_buildings_by_name_or_code(): void
+    public function test_can_search_complexes_by_name_or_code(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $response = $this->actingAs($user)
-            ->getJson('/api/v1/buildings?search=torres')
+            ->getJson('/api/v1/complexes?search=torres')
             ->assertOk();
 
         $response->assertJsonCount(1, 'data');
 
-        $this->actingAs($user)->getJson('/api/v1/buildings?search='.$complex->code)
+        $this->actingAs($user)->getJson('/api/v1/complexes?search='.$complex->code)
             ->assertOk()
             ->assertJsonCount(1, 'data');
     }
@@ -191,7 +191,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $this->actingAs($user)
-            ->getJson('/api/v1/buildings?order_by=secret_column')
+            ->getJson('/api/v1/complexes?order_by=secret_column')
             ->assertStatus(422)
             ->assertJsonValidationErrors('order_by');
     }
@@ -202,7 +202,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $this->actingAs($user)
-            ->getJson('/api/v1/buildings?order_dir=sideways')
+            ->getJson('/api/v1/complexes?order_dir=sideways')
             ->assertStatus(422)
             ->assertJsonValidationErrors('order_dir');
     }
@@ -213,35 +213,35 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $this->actingAs($user)
-            ->getJson('/api/v1/buildings?per_page=0')
+            ->getJson('/api/v1/complexes?per_page=0')
             ->assertStatus(422)
             ->assertJsonValidationErrors('per_page');
 
         $this->actingAs($user)
-            ->getJson('/api/v1/buildings?per_page=1000')
+            ->getJson('/api/v1/complexes?per_page=1000')
             ->assertStatus(422)
             ->assertJsonValidationErrors('per_page');
     }
 
     // ----------------------------------------------------------------- alta
 
-    public function test_complex_admin_cannot_create_a_building(): void
+    public function test_complex_admin_cannot_create_a_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload())
+            ->postJson('/api/v1/complexes', $this->payload())
             ->assertForbidden();
     }
 
-    public function test_platform_admin_can_create_a_building(): void
+    public function test_platform_admin_can_create_a_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $response = $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload())
+            ->postJson('/api/v1/complexes', $this->payload())
             ->assertCreated();
 
         $response->assertJsonPath('data.status', ResidentialComplexStatus::DRAFT->value);
@@ -249,36 +249,36 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->assertDatabaseHas('residential_complexes', ['name' => 'Conjunto Nuevo']);
     }
 
-    public function test_create_building_requires_mandatory_fields(): void
+    public function test_create_complex_requires_mandatory_fields(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', [])
+            ->postJson('/api/v1/complexes', [])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'code', 'address', 'city']);
     }
 
-    public function test_create_building_validates_unique_code(): void
+    public function test_create_complex_validates_unique_code(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload(['code' => $complex->code]))
+            ->postJson('/api/v1/complexes', $this->payload(['code' => $complex->code]))
             ->assertStatus(422)
             ->assertJsonValidationErrors('code');
     }
 
-    public function test_update_building_validates_unique_code(): void
+    public function test_update_complex_validates_unique_code(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         $other = $this->makeComplex('Torres del Sur');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['code' => $other->code])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['code' => $other->code])
             ->assertStatus(422)
             ->assertJsonValidationErrors('code');
 
@@ -287,45 +287,45 @@ class ResidentialComplexApiTest extends CoreTestCase
 
     // --------------------------------------------------------------- edicion
 
-    public function test_complex_admin_can_update_the_building(): void
+    public function test_complex_admin_can_update_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertOk()
             ->assertJsonPath('data.city', 'Medellin');
 
         $this->assertSame('Medellin', $complex->fresh()->city);
     }
 
-    public function test_put_updates_the_building_like_patch_does(): void
+    public function test_put_updates_the_complex_like_patch_does(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->putJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Cali'])
+            ->putJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Cali'])
             ->assertOk()
             ->assertJsonPath('data.city', 'Cali');
 
         $this->assertSame('Cali', $complex->fresh()->city);
     }
 
-    public function test_member_without_edit_permission_cannot_update_the_building(): void
+    public function test_member_without_edit_permission_cannot_update_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertForbidden();
 
         $this->assertSame($complex->city, $complex->fresh()->city);
     }
 
-    public function test_member_with_an_expired_role_assignment_cannot_update_the_building(): void
+    public function test_member_with_an_expired_role_assignment_cannot_update_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
@@ -337,13 +337,13 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertForbidden();
 
         $this->assertSame($complex->city, $complex->fresh()->city);
     }
 
-    public function test_member_with_an_expired_role_assignment_cannot_archive_the_building(): void
+    public function test_member_with_an_expired_role_assignment_cannot_archive_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
@@ -354,13 +354,13 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
 
         $this->actingAs($user)
-            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->deleteJson("/api/v1/complexes/{$complex->uuid}")
             ->assertForbidden();
 
         $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
     }
 
-    public function test_member_with_a_pending_role_assignment_cannot_update_the_building(): void
+    public function test_member_with_a_pending_role_assignment_cannot_update_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
@@ -371,13 +371,13 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertForbidden();
 
         $this->assertSame($complex->city, $complex->fresh()->city);
     }
 
-    public function test_member_with_a_role_of_another_complex_cannot_update_the_building(): void
+    public function test_member_with_a_role_of_another_complex_cannot_update_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         $other = $this->makeComplex('Torres del Sur');
@@ -396,7 +396,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $membership->roles()->attach($otherRole->id);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertForbidden();
 
         $this->assertSame($complex->city, $complex->fresh()->city);
@@ -419,7 +419,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $membership->roles()->attach($otherRole->id);
 
         $this->actingAs($user)
-            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->getJson("/api/v1/complexes/{$complex->uuid}")
             ->assertOk()
             ->assertJsonMissingPath('data.settings')
             ->assertJsonMissingPath('data.legal_identifier');
@@ -432,7 +432,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['code' => 'otro-codigo'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['code' => 'otro-codigo'])
             ->assertStatus(422);
 
         $this->assertSame($complex->code, $complex->fresh()->code);
@@ -445,7 +445,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertStatus(422);
     }
 
@@ -456,19 +456,19 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['city' => 'Medellin'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['city' => 'Medellin'])
             ->assertStatus(422);
     }
 
     // ----------------------------------------------------------------- baja
 
-    public function test_delete_archives_the_building_instead_of_deleting_it(): void
+    public function test_delete_archives_the_complex_instead_of_deleting_it(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->deleteJson("/api/v1/complexes/{$complex->uuid}")
             ->assertOk()
             ->assertJsonPath('data.status', ResidentialComplexStatus::ARCHIVED->value);
 
@@ -484,19 +484,19 @@ class ResidentialComplexApiTest extends CoreTestCase
         $person = $this->makePerson($complex);
         $unit = $this->makeUnit($complex);
 
-        $this->actingAs($user)->deleteJson("/api/v1/buildings/{$complex->uuid}")->assertOk();
+        $this->actingAs($user)->deleteJson("/api/v1/complexes/{$complex->uuid}")->assertOk();
 
         $this->assertDatabaseHas('people', ['id' => $person->id]);
         $this->assertDatabaseHas('property_units', ['id' => $unit->id]);
     }
 
-    public function test_member_without_edit_permission_cannot_archive_the_building(): void
+    public function test_member_without_edit_permission_cannot_archive_the_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $this->actingAs($user)
-            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->deleteJson("/api/v1/complexes/{$complex->uuid}")
             ->assertForbidden();
 
         $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
@@ -511,7 +511,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
         $response = $this->actingAs($user)
-            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->getJson("/api/v1/complexes/{$complex->uuid}")
             ->assertOk();
 
         $response->assertJsonMissingPath('data.legal_identifier');
@@ -526,7 +526,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $response = $this->actingAs($user)
-            ->getJson("/api/v1/buildings/{$complex->uuid}")
+            ->getJson("/api/v1/complexes/{$complex->uuid}")
             ->assertOk();
 
         $response->assertJsonPath('data.legal_identifier', '900123456-7');
@@ -539,7 +539,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $complex->update(['legal_identifier' => '900123456-7']);
         [$user] = $this->makeMember($complex, SystemRole::RESIDENT);
 
-        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+        $response = $this->actingAs($user)->getJson('/api/v1/complexes')->assertOk();
 
         $response->assertJsonMissingPath('data.0.legal_identifier');
         $response->assertJsonMissingPath('data.0.settings');
@@ -553,7 +553,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user, $membership] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
         $membership->update(['status' => MembershipStatus::SUSPENDED]);
 
-        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+        $this->actingAs($user)->getJson('/api/v1/complexes')->assertForbidden();
     }
 
     public function test_a_revoked_platform_membership_does_not_grant_the_catalog(): void
@@ -564,19 +564,19 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user, $membership] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
         $membership->update(['status' => MembershipStatus::REVOKED]);
 
-        $this->actingAs($user)->getJson('/api/v1/buildings')->assertForbidden();
+        $this->actingAs($user)->getJson('/api/v1/complexes')->assertForbidden();
 
         $this->assertDatabaseHas('residential_complexes', ['uuid' => $other->uuid]);
     }
 
-    public function test_a_suspended_platform_membership_cannot_create_a_building(): void
+    public function test_a_suspended_platform_membership_cannot_create_a_complex(): void
     {
         $complex = $this->makeComplex('Torres del Norte');
         [$user, $membership] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
         $membership->update(['status' => MembershipStatus::SUSPENDED]);
 
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload())
+            ->postJson('/api/v1/complexes', $this->payload())
             ->assertForbidden();
 
         $this->assertDatabaseMissing('residential_complexes', ['name' => 'Conjunto Nuevo']);
@@ -602,14 +602,14 @@ class ResidentialComplexApiTest extends CoreTestCase
             ['valid_until' => now()->subDay()]
         );
 
-        $response = $this->actingAs($user)->getJson('/api/v1/buildings')->assertOk();
+        $response = $this->actingAs($user)->getJson('/api/v1/complexes')->assertOk();
 
         $uuids = array_column($response->json('data'), 'uuid');
         $this->assertContains($mine->uuid, $uuids);
         $this->assertNotContains($other->uuid, $uuids);
     }
 
-    public function test_platform_admin_with_an_expired_role_assignment_cannot_create_a_building(): void
+    public function test_platform_admin_with_an_expired_role_assignment_cannot_create_a_complex(): void
     {
         $mine = $this->makeComplex('Conjunto Propio');
 
@@ -621,11 +621,11 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
 
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload())
+            ->postJson('/api/v1/complexes', $this->payload())
             ->assertForbidden();
     }
 
-    public function test_platform_admin_with_a_pending_role_assignment_cannot_create_a_building(): void
+    public function test_platform_admin_with_a_pending_role_assignment_cannot_create_a_complex(): void
     {
         $mine = $this->makeComplex('Conjunto Propio');
 
@@ -637,7 +637,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
 
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload())
+            ->postJson('/api/v1/complexes', $this->payload())
             ->assertForbidden();
     }
 
@@ -654,7 +654,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         );
 
         $this->actingAs($user)
-            ->deleteJson("/api/v1/buildings/{$other->uuid}")
+            ->deleteJson("/api/v1/complexes/{$other->uuid}")
             ->assertNotFound();
 
         $this->assertNotSame(ResidentialComplexStatus::ARCHIVED, $other->fresh()->status);
@@ -674,7 +674,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $original = $complex->settings;
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", [
                 'settings' => ['regional' => ['timezone' => 'America/Bogota']],
             ])
             ->assertForbidden();
@@ -694,7 +694,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $original = $complex->legal_identifier;
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['legal_identifier' => 'NIT-EDITADO'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['legal_identifier' => 'NIT-EDITADO'])
             ->assertForbidden();
 
         $this->assertSame($original, $complex->fresh()->legal_identifier);
@@ -707,7 +707,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", [
                 'legal_identifier' => 'NIT-900',
                 'settings' => ['regional' => ['timezone' => 'America/Bogota']],
             ])
@@ -729,7 +729,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
             ->assertForbidden();
 
         $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
@@ -741,7 +741,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['name' => 'Torres Renombradas'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['name' => 'Torres Renombradas'])
             ->assertOk()
             ->assertJsonPath('data.name', 'Torres Renombradas');
 
@@ -755,7 +755,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
             ->assertOk()
             ->assertJsonPath('data.status', ResidentialComplexStatus::SUSPENDED->value);
 
@@ -771,7 +771,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->prepareActivatableComplex($complex);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertOk()
             ->assertJsonPath('data.status', ResidentialComplexStatus::ACTIVE->value);
 
@@ -785,7 +785,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$platform] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $this->actingAs($admin)
-            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->deleteJson("/api/v1/complexes/{$complex->uuid}")
             ->assertOk();
 
         $this->assertSame(ResidentialComplexStatus::ARCHIVED, $complex->fresh()->status);
@@ -794,7 +794,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->prepareActivatableComplex($complex);
 
         $response = $this->actingAs($platform)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('archived', (string) $response->json('message'));
@@ -809,7 +809,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::DRAFT->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::DRAFT->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('active', (string) $response->json('message'));
@@ -823,7 +823,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => 'banana'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => 'banana'])
             ->assertStatus(422)
             ->assertJsonValidationErrors('status');
 
@@ -840,7 +840,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('administrador', (string) $response->json('message'));
@@ -857,7 +857,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('estructura', (string) $response->json('message'));
@@ -874,7 +874,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $this->makeUnit($complex);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('políticas', (string) $response->json('message'));
@@ -898,7 +898,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $complex->update(['settings' => ComplexSettingsCatalog::defaults()]);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('administrador', (string) $response->json('message'));
@@ -912,7 +912,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['name' => 'Torres Renombradas'])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['name' => 'Torres Renombradas'])
             ->assertStatus(422);
 
         $this->assertSame(
@@ -928,7 +928,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->deleteJson("/api/v1/buildings/{$complex->uuid}")
+            ->deleteJson("/api/v1/complexes/{$complex->uuid}")
             ->assertOk()
             ->assertJsonPath('data.status', ResidentialComplexStatus::ARCHIVED->value);
 
@@ -944,7 +944,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         // Un conjunto no escribible no admite ninguna escritura, ni siquiera
         // repetir su propio estado.
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
             ->assertStatus(422);
 
         $this->assertSame(
@@ -965,7 +965,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         // Reactivar es la unica escritura admitida sobre un conjunto
         // suspendido: no puede arrastrar otros atributos.
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", [
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", [
                 'status' => ResidentialComplexStatus::ACTIVE->value,
                 'name' => 'Torres Renombradas',
             ])
@@ -984,7 +984,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::PLATFORM_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
             ->assertOk();
 
         $this->assertDatabaseHas('audit_logs', [
@@ -1001,7 +1001,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
 
         $response = $this->actingAs($user)
-            ->getJson('/api/v1/buildings?status=active')
+            ->getJson('/api/v1/complexes?status=active')
             ->assertOk();
 
         $this->assertCount(1, $response->json('data'));
@@ -1015,7 +1015,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         [$user] = $this->makeMember($other, SystemRole::COMPLEX_ADMIN);
 
         $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::SUSPENDED->value])
             ->assertNotFound();
 
         $this->assertSame(ResidentialComplexStatus::DRAFT, $complex->fresh()->status);
@@ -1031,7 +1031,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         // El alta no acepta un estado: el conjunto nace en borrador y se
         // activa despues de configurarlo (spec §2, paso 1).
         $this->actingAs($user)
-            ->postJson('/api/v1/buildings', $this->payload([
+            ->postJson('/api/v1/complexes', $this->payload([
                 'status' => ResidentialComplexStatus::ACTIVE->value,
             ]))
             ->assertStatus(422)
@@ -1055,7 +1055,7 @@ class ResidentialComplexApiTest extends CoreTestCase
         $complex->update(['settings' => $settings]);
 
         $response = $this->actingAs($user)
-            ->patchJson("/api/v1/buildings/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
+            ->patchJson("/api/v1/complexes/{$complex->uuid}", ['status' => ResidentialComplexStatus::ACTIVE->value])
             ->assertStatus(422);
 
         $this->assertStringContainsString('regional', (string) $response->json('message'));

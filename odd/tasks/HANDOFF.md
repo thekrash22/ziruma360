@@ -7,10 +7,10 @@ completo sin depender de la conversacion anterior.
 
 - Rama de integracion: **`stg`** (commit `abbcc2a`; merges de los PR #24 `fix-doc-structure`,
   #25 `version-spec`, #26 `memberships-fixes` y #27 `handoff-t22c`).
-- Rama de trabajo: **`feat/complex-roles`** (T22c), pusheada y esperando el PR manual a `stg`.
+- Rama de trabajo: **`feat/complex-tenant-root`** (T23), pusheada y esperando el PR manual a `stg`.
 - Arbol limpio. Sin commits sin pushear.
-- Suite completa en verde contra PostgreSQL real: **614 pruebas / 1.732 assertions**
-  (`docker compose exec -T app php artisan test`). Pint limpio sobre 236 archivos.
+- Suite completa en verde contra PostgreSQL real: **652 pruebas / 2.034 assertions**
+  (`docker compose exec -T app php artisan test`). Pint limpio sobre 245 archivos.
 - **Feature doc (el contrato de todos los work units)**: `odd/tasks/ziruma360-core-admin.md`
   (specs S1-S89, Log L1-L79, tabla de Tasks y de pendientes). Espejo en
   `odd/ziruma360-core-admin/tasks.md`.
@@ -29,6 +29,7 @@ completo sin depender de la conversacion anterior.
 | T22a | Superficie de membresias del conjunto: seis endpoints en `/api/v1/core/members` (listar, invitar, aceptar, suspender, revocar, roles) | `review-be2fd9644104f15d` | PASS 9/9 |
 | T22b | Vigencia real del permiso (`PermissionService` delega en `ScopedPermission`) y atomicidad de la invitacion | `review-41e69d28d3e3d17f` | PASS 9/9 |
 | T22c | Roles propios del conjunto (RN-C03): `GET/POST/PUT /api/v1/core/roles`, con la `key` inmutable, el `name` unico por conjunto, los permisos del catalogo cerrado y la baja por desactivacion | `review-52865f31707e648b` | PASS 10/10 |
+| T23 | Capa del tenant root: `/api/v1/complexes` (la ruta vieja desaparece sin alias), tres pantallas web de conjuntos, el conjunto activo siempre en la cabecera, el bootstrap por consola y el dashboard con datos reales | `review-28b92ea23e099ffc` + `review-d298105e26709f1d` | PASS 10/10 |
 
 Ademas: el feature doc quedo **reparado** (mi resolucion del merge habia perdido los
 encabezados de seccion) y el **spec del core quedo versionado**. T22c sumo la superficie de
@@ -60,6 +61,32 @@ de la tabla de Tasks y la entrada de Log. Leer primero el feature doc hasta `## 
 **Deuda que deja T22c** (arranca con esto a la vista): un rol desactivado puede seguir
 asignado a una membresia; no concede nada (lo filtra `ScopedPermission`), pero no hay puerta
 que lo impida.
+
+**Deuda que deja T23** (arranca con esto a la vista):
+
+1. `z360:create-complex` puede promover a plataforma una cuenta **existente** que solo se nombra
+   por correo (`R1-bootstrap-privilege-escalation` de la ronda nativa, refutado pero registrado):
+   el comando da el rol de plataforma a la cuenta que le pidan, exista o no.
+2. El comando imprime el **detalle crudo de la excepcion** ante un fallo de base
+   (`R1-command-secret-disclosure`, informativo): puede filtrar fragmentos de SQL a la consola.
+   Es trabajo posterior, no una correccion de T23.
+3. El conjunto se crea con `address` y `city` **vacios** (las columnas son NOT NULL y el
+   contrato del comando no las pide): editables mientras el conjunto este en `draft`.
+4. No hay pantallas de **politicas** ni de **modulos** (el detalle muestra los modulos ya
+   sembrados, pero no se pueden habilitar ni desactivar).
+5. El panel lateral sigue anunciando "Proximamente" en areas que no existen.
+
+**Como arrancar el sistema** (para validar la vista con datos reales, no de fabrica):
+
+```sh
+docker compose exec -T app php artisan z360:create-complex \
+  --name="Altos del Parque" --code="altos-del-parque" \
+  --admin-email="admin@altosdelparque.test" --admin-name="Ana Administracion" \
+  --admin-password="z360-admin-local-2026"
+```
+
+Crea el conjunto en `draft`, el administrador, la membresia activa y el rol `platform_admin`.
+Es idempotente por `code`: si el conjunto ya existe, no crea nada y devuelve codigo 1.
 
 ## 4. Playbook operativo (lo que costo aprender)
 
