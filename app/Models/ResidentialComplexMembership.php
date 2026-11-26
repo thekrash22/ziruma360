@@ -45,6 +45,19 @@ class ResidentialComplexMembership extends Model
         'last_active_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        // The assignments of a deleted membership are removed by the cascade
+        // of the database, which does not fire the model events: their trail
+        // would be lost. They are removed through the model, so every one of
+        // them leaves its `deleted` trail (spec §1.6).
+        static::deleting(function (ResidentialComplexMembership $membership): void {
+            $membership->membershipRoles()->get()->each(
+                fn (MembershipRole $assignment) => $assignment->delete()
+            );
+        });
+    }
+
     /**
      * Check if the membership is active.
      */

@@ -3,6 +3,7 @@
 namespace App\Models\Concerns;
 
 use App\Models\AuditLog;
+use App\Models\Builders\AuditableDeleteBuilder;
 use LogicException;
 
 /**
@@ -102,6 +103,34 @@ trait Auditable
                 $complexId
             );
         });
+    }
+
+    /**
+     * The builder of an audited model.
+     *
+     * A mass delete (`Model::query()->delete()`, `$relation->delete()`) does
+     * not fire the model events, so the deleted rows would vanish without
+     * leaving their trail. This builder deletes every row through the model,
+     * so the audit promise does not depend on how the delete was written.
+     */
+    public function newEloquentBuilder($query): AuditableDeleteBuilder
+    {
+        return new AuditableDeleteBuilder($query);
+    }
+
+    /**
+     * Delete the row of the model.
+     *
+     * The deletion of a single row goes straight to the database: the mass
+     * delete of the builder removes the rows one by one through the model (so
+     * each one leaves its trail), and this method is what keeps that promise
+     * from calling itself again.
+     */
+    protected function performDeleteOnModel()
+    {
+        $this->setKeysForSaveQuery($this->newModelQuery())->toBase()->delete();
+
+        $this->exists = false;
     }
 
     /**

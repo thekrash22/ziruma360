@@ -220,6 +220,74 @@ class AuditDomainCoverageTest extends CoreTestCase
         $this->assertSame($role->id, $trail->before_data['role_id']);
     }
 
+    public function test_a_mass_delete_of_role_assignments_leaves_a_deleted_trail(): void
+    {
+        [$admin, $complex] = $this->complexWithAdmin();
+
+        $membership = ResidentialComplexMembership::factory()->create([
+            'residential_complex_id' => $complex->id,
+            'user_id' => User::factory()->create()->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        $role = Role::query()->where('key', SystemRole::TENANT->value)->firstOrFail();
+
+        $membership->roles()->attach($role->id);
+
+        MembershipRole::query()->where('membership_id', $membership->id)->delete();
+
+        $trail = $this->trail(MembershipRole::class, 'deleted');
+
+        $this->assertNotNull($trail);
+        $this->assertSame($complex->id, (int) $trail->residential_complex_id);
+        $this->assertSame($role->id, $trail->before_data['role_id']);
+    }
+
+    public function test_deleting_a_membership_leaves_a_deleted_trail_for_its_role_assignments(): void
+    {
+        [$admin, $complex] = $this->complexWithAdmin();
+
+        $membership = ResidentialComplexMembership::factory()->create([
+            'residential_complex_id' => $complex->id,
+            'user_id' => User::factory()->create()->id,
+            'status' => MembershipStatus::ACTIVE,
+        ]);
+
+        $role = Role::query()->where('key', SystemRole::TENANT->value)->firstOrFail();
+
+        $membership->roles()->attach($role->id);
+
+        $membership->delete();
+
+        $trail = $this->trail(MembershipRole::class, 'deleted');
+
+        $this->assertNotNull($trail);
+        $this->assertSame($complex->id, (int) $trail->residential_complex_id);
+        $this->assertSame($role->id, $trail->before_data['role_id']);
+    }
+
+    public function test_replacing_the_permissions_of_a_role_leaves_a_deleted_trail_for_the_removed_ones(): void
+    {
+        [$admin, $complex] = $this->complexWithAdmin();
+
+        $role = Role::factory()->complexLevel($complex)->create([
+            'key' => 'auditor_'.uniqid(),
+            'name' => 'Auditor '.uniqid(),
+        ]);
+
+        RolePermission::factory()->forRole($role)->create([
+            'permission_key' => 'unit.view',
+        ]);
+
+        $role->permissions()->delete();
+
+        $trail = $this->trail(RolePermission::class, 'deleted');
+
+        $this->assertNotNull($trail);
+        $this->assertSame($complex->id, (int) $trail->residential_complex_id);
+        $this->assertSame('unit.view', $trail->before_data['permission_key']);
+    }
+
     public function test_a_role_permission_write_leaves_an_audit_trail(): void
     {
         [$admin, $complex] = $this->complexWithAdmin();

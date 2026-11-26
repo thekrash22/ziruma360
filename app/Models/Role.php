@@ -32,6 +32,23 @@ class Role extends Model
         'is_active' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        // A deleted role takes its permissions and its assignments with it
+        // through the cascade of the database, which does not fire the model
+        // events: their trail would be lost. They are removed through the
+        // model, so every one of them leaves its `deleted` trail (spec §1.6).
+        static::deleting(function (Role $role): void {
+            $role->permissions()->get()->each(
+                fn (RolePermission $permission) => $permission->delete()
+            );
+
+            $role->membershipRoles()->get()->each(
+                fn (MembershipRole $assignment) => $assignment->delete()
+            );
+        });
+    }
+
     /**
      * Check if this is a system role.
      */
