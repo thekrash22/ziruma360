@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Core;
 
 use App\Services\AuditTrail;
+use Carbon\Exceptions\InvalidFormatException;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
@@ -43,7 +45,7 @@ class IndexAuditLogRequest extends FormRequest
 
         // The range is only comparable when both ends are given.
         if ($this->filled('from')) {
-            $rules['to'] = ['nullable', 'date', 'after_or_equal:from'];
+            $rules['to'] = ['nullable', 'date', $this->rangeRule()];
         }
 
         return $rules;
@@ -108,15 +110,7 @@ class IndexAuditLogRequest extends FormRequest
      */
     public function fromDate(): ?Carbon
     {
-        $value = $this->validated('from');
-
-        if (! is_string($value) || $value === '') {
-            return null;
-        }
-
-        $date = Carbon::parse($value);
-
-        return $this->isDateOnly($value) ? $date->startOfDay() : $date;
+        return $this->resolvedBound('from');
     }
 
     /**
@@ -126,15 +120,54 @@ class IndexAuditLogRequest extends FormRequest
      */
     public function toDate(): ?Carbon
     {
-        $value = $this->validated('to');
+        return $this->resolvedBound('to');
+    }
+
+    /**
+     * The rule of the upper bound: it cannot be before the lower one.
+     *
+     * The bounds are compared as they are resolved (a plain date is the end
+     * of that day for `to`), so a range that mixes a time in `from` with a
+     * plain date in `to` is accepted when it covers the same day.
+     */
+    private function rangeRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            $from = $this->resolvedBound('from');
+            $to = $this->resolvedBound('to');
+
+            if ($from !== null && $to !== null && $to->lt($from)) {
+                $fail('The to field must be a date after or equal to from.');
+            }
+        };
+    }
+
+    /**
+     * A bound of the range, as it is resolved.
+     *
+     * A date without a time is the beginning of the day for `from` and the
+     * end of the day for `to`.
+     */
+    private function resolvedBound(string $key): ?Carbon
+    {
+        $value = $this->input($key);
 
         if (! is_string($value) || $value === '') {
             return null;
         }
 
-        $date = Carbon::parse($value);
+        try {
+            $date = Carbon::parse($value);
+        } catch (InvalidFormatException) {
+            // The `date` rule reports the malformed value.
+            return null;
+        }
 
-        return $this->isDateOnly($value) ? $date->endOfDay() : $date;
+        if (! $this->isDateOnly($value)) {
+            return $date;
+        }
+
+        return $key === 'to' ? $date->endOfDay() : $date->startOfDay();
     }
 
     /**

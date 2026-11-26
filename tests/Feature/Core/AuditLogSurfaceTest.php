@@ -255,6 +255,37 @@ class AuditLogSurfaceTest extends CoreTestCase
             ->assertStatus(422);
     }
 
+    public function test_a_range_that_mixes_a_time_and_a_plain_date_is_accepted(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        $this->makeAuditLog($complex, ['entity_id' => 'morning', 'occurred_at' => Carbon::parse('2026-02-15 09:00:00')]);
+        $this->makeAuditLog($complex, ['entity_id' => 'tomorrow', 'occurred_at' => Carbon::parse('2026-02-16 09:00:00')]);
+
+        // `from` carries a time and `to` is a plain date: the plain date is
+        // the end of that day, so the range is valid and covers the record.
+        $response = $this->actingAs($admin)
+            ->getJson('/api/v1/core/audit-logs?from=2026-02-15%2008:00:00&to=2026-02-15')
+            ->assertOk();
+
+        $this->assertSame(['morning'], $this->entityIdsOf($response->json('data'), 'App\Models\Person'));
+    }
+
+    public function test_a_range_that_mixes_a_time_and_a_plain_date_outside_the_range_is_rejected(): void
+    {
+        $complex = $this->makeComplex('Torres');
+
+        [$admin] = $this->makeMember($complex, SystemRole::COMPLEX_ADMIN);
+
+        // The plain date is the end of the 14th, before the moment the
+        // range starts on the 15th.
+        $this->actingAs($admin)
+            ->getJson('/api/v1/core/audit-logs?from=2026-02-15%2010:00:00&to=2026-02-14')
+            ->assertStatus(422);
+    }
+
     // ------------------------------------------------------ the pagination
 
     public function test_the_trail_is_paginated_in_descending_order(): void
