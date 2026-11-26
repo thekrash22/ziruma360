@@ -31,6 +31,7 @@ use App\Models\RolePermission;
 use App\Models\UnitLease;
 use App\Models\UnitOccupancy;
 use App\Models\User;
+use App\Services\ComplexContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -969,5 +970,80 @@ class AuditDomainCoverageTest extends CoreTestCase
         $complex->delete();
 
         $this->assertDatabaseMissing('residential_complex_memberships', ['id' => $membership->id]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | The promise of the trail, pinned by its own tests.
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_the_guard_of_the_trait_fails_visibly_when_the_complex_cannot_be_resolved(): void
+    {
+        $unit = PropertyUnit::factory()->create();
+
+        // The record belongs to a complex, but the complex cannot be
+        // resolved: the trail would be lost silently, so it fails.
+        $unit->residential_complex_id = null;
+
+        $this->expectException(LogicException::class);
+
+        $unit->auditResolvedComplexId();
+    }
+
+    public function test_revoking_a_permission_leaves_the_trail_of_the_deletion(): void
+    {
+        [, $complex] = $this->complexWithAdmin();
+
+        $role = Role::factory()->create([
+            'residential_complex_id' => $complex->id,
+            'key' => 'own_'.uniqid(),
+        ]);
+
+        $role->grantPermission('unit.view');
+
+        $this->assertNotNull($this->trail(RolePermission::class, 'created'));
+
+        $role->revokePermission('unit.view');
+
+        $trail = $this->trail(RolePermission::class, 'deleted');
+
+        $this->assertNotNull($trail);
+        $this->assertSame((string) $complex->id, (string) $trail->residential_complex_id);
+        $this->assertSame('unit.view', $trail->before_data['permission_key']);
+    }
+
+    public function test_the_complex_of_the_trail_is_the_one_of_the_record_and_not_the_one_of_the_context(): void
+    {
+        [, $complex] = $this->complexWithAdmin('Torres');
+
+        $other = $this->makeComplex('Otro conjunto');
+
+        // The context points to the first complex...
+        ComplexContext::setCurrentComplexId($complex->id);
+
+        // ...but the record belongs to the other one: the trail follows the
+        // record, never the surface the write came from.
+        PropertyUnit::factory()->create(['residential_complex_id' => $other->id]);
+
+        $trail = $this->trail(PropertyUnit::class, 'created');
+
+        $this->assertNotNull($trail);
+        $this->assertSame((string) $other->id, (string) $trail->residential_complex_id);
+        $this->assertNotSame((string) $complex->id, (string) $trail->residential_complex_id);
+    }
+
+    public function test_an_update_without_substantive_changes_leaves_no_trail(): void
+    {
+        [, $complex] = $this->complexWithAdmin();
+
+        $unit = PropertyUnit::factory()->create(['residential_complex_id' => $complex->id]);
+
+        $this->assertNotNull($this->trail(PropertyUnit::class, 'created'));
+
+        // Only the timestamp moves: there is no change of value to record.
+        $unit->touch();
+
+        $this->assertNull($this->trail(PropertyUnit::class, 'updated'));
     }
 }
