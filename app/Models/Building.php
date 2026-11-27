@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\BuildingStatus;
 use App\Enums\BuildingType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,8 @@ use Illuminate\Support\Str;
 
 class Building extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The physical structure is audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

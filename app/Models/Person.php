@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PersonStatus;
 use App\Enums\TipoDocumento;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,7 +22,8 @@ use Illuminate\Support\Str;
  */
 class Person extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The occupants are audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',
@@ -67,6 +69,19 @@ class Person extends Model
     public function getRouteKeyName(): string
     {
         return 'uuid';
+    }
+
+    /**
+     * The attributes that never reach an audit snapshot (spec S99).
+     *
+     * The identity document and the reference of the consent are personal
+     * data: the trail keeps the structure of the change, never the value.
+     *
+     * @return list<string>
+     */
+    public function auditSensitiveAttributes(): array
+    {
+        return ['document_number', 'data_consent_ref'];
     }
 
     /**

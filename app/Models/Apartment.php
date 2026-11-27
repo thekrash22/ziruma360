@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ApartmentOperationalStatus;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,7 +18,8 @@ use Illuminate\Support\Str;
  */
 class Apartment extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The physical structure is audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

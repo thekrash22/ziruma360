@@ -6,6 +6,7 @@ use App\Enums\OccupancyStatus;
 use App\Enums\OwnershipStatus;
 use App\Enums\PropertyUnitStatus;
 use App\Enums\PropertyUnitType;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,7 +19,8 @@ use Illuminate\Support\Str;
 
 class PropertyUnit extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The physical structure is audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',

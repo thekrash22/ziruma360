@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Core\AuditLogController;
 use App\Http\Controllers\Api\Core\ComplexController;
 use App\Http\Controllers\Api\Core\ComplexSettingsController;
 use App\Http\Controllers\Api\Core\MembershipController;
@@ -216,6 +217,15 @@ Route::prefix('v1/core')
         Route::put('roles/{role}', [RoleController::class, 'update'])
             ->whereNumber('role')
             ->name('api.core.roles.update');
+
+        // Audit trail of the complex (S100-S101). The surface is read only:
+        // there is no route to change or delete a trail.
+        Route::get('audit-logs', [AuditLogController::class, 'index'])
+            ->name('api.core.audit-logs.index');
+
+        Route::get('audit-logs/{auditLog}', [AuditLogController::class, 'show'])
+            ->whereNumber('auditLog')
+            ->name('api.core.audit-logs.show');
     });
 
 /*

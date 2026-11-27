@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\AuthorizationStatus;
 use App\Enums\AuthorizationType;
 use App\Enums\LeaseStatus;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToComplex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -31,7 +32,8 @@ use Illuminate\Support\Str;
  */
 class PropertyUnitAuthorization extends Model
 {
-    use BelongsToComplex, HasFactory;
+    // The ownership authorizations are audited (spec §1.6).
+    use Auditable, BelongsToComplex, HasFactory;
 
     protected $fillable = [
         'uuid',
@@ -82,6 +84,19 @@ class PropertyUnitAuthorization extends Model
     public function getRouteKeyName(): string
     {
         return 'uuid';
+    }
+
+    /**
+     * The attributes that never reach an audit snapshot (spec S99).
+     *
+     * The documentary reference of the authorization is excluded by the model
+     * that owns it, never by a global list.
+     *
+     * @return list<string>
+     */
+    public function auditSensitiveAttributes(): array
+    {
+        return ['document_reference'];
     }
 
     /**

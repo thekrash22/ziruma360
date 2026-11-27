@@ -2,6 +2,7 @@
 
 use App\Enums\MembershipStatus;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Web\AuditLogController;
 use App\Http\Controllers\Web\BuildingController;
 use App\Http\Controllers\Web\ComplexController;
 use App\Http\Controllers\Web\Core\PersonController;
@@ -111,6 +112,18 @@ Route::middleware('auth')->group(function () {
         Route::get('/people/{uuid}/edit', [PersonController::class, 'edit'])->name('people.edit');
         Route::put('/people/{uuid}', [PersonController::class, 'update'])->name('people.update');
         Route::delete('/people/{uuid}', [PersonController::class, 'destroy'])->name('people.destroy');
+    });
+
+    /*
+    | Audit trail of the complex (spec S102).
+    |
+    | The screen is read only: it lists the trail of the active complex with
+    | the filters of the API (action, entity and date range) and shows the
+    | diff of every record. It requires `complex.view_audit`: without it the
+    | answer is 403, never an empty screen.
+    */
+    Route::middleware(ResolveActiveComplex::class)->group(function (): void {
+        Route::get('/auditoria', [AuditLogController::class, 'index'])->name('auditoria.index');
     });
 });
 

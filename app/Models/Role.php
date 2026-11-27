@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ComplexPermission;
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +12,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Role extends Model
 {
-    use HasFactory;
+    // The roles of the complex are audited (spec §1.6). The catalog roles
+    // (residential_complex_id null) are platform objects: they are skipped.
+    use Auditable, HasFactory;
 
     protected $fillable = [
         'residential_complex_id',
@@ -28,6 +31,23 @@ class Role extends Model
         'is_editable' => 'boolean',
         'is_active' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        // A deleted role takes its permissions and its assignments with it
+        // through the cascade of the database, which does not fire the model
+        // events: their trail would be lost. They are removed through the
+        // model, so every one of them leaves its `deleted` trail (spec §1.6).
+        static::deleting(function (Role $role): void {
+            $role->permissions()->get()->each(
+                fn (RolePermission $permission) => $permission->delete()
+            );
+
+            $role->membershipRoles()->get()->each(
+                fn (MembershipRole $assignment) => $assignment->delete()
+            );
+        });
+    }
 
     /**
      * Check if this is a system role.
@@ -85,11 +105,29 @@ class Role extends Model
 
     /**
      * Revoke a permission from the role.
+     *
+     * The permission is deleted through the model so the revocation leaves an
+     * audit trail (spec §1.6).
      */
     public function revokePermission(string|ComplexPermission $permission): void
     {
         $key = $permission instanceof ComplexPermission ? $permission->value : $permission;
-        $this->permissions()->where('permission_key', $key)->delete();
+
+        $model = $this->permissions()->where('permission_key', $key)->first();
+
+        $model?->delete();
+    }
+
+    /**
+     * A role of the catalog belongs to no complex: it is a platform object.
+     *
+     * The roles of the complex are audited; the catalog ones are skipped
+     * without failing the write, because a trail without a complex is
+     * impossible (RN-C04).
+     */
+    public function auditIsPlatformObject(): bool
+    {
+        return $this->residential_complex_id === null;
     }
 
     /**
@@ -117,6 +155,7 @@ class Role extends Model
             'membership_roles',
             'role_id'
         )
+            ->using(MembershipRole::class)
             ->withPivot('valid_from', 'valid_until')
             ->withTimestamps();
     }
